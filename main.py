@@ -97,7 +97,7 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
     from src import schemas, tailor
 
     tcfg = cfg.get("tailor", {})
-    company, role = args.company, args.role
+    company, role, job = args.company, args.role, None
     if args.job_id is not None:
         job = tracker.get_job(tracker.connect(ROOT / cfg["db_path"]), args.job_id)
         if job is None:
@@ -105,7 +105,18 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
         company, role = company or job["company"], role or job["role"]
     if not (company and role):
         raise SystemExit("give --job-id, or both --company and --role")
-    jd_text = Path(args.jd).read_text(encoding="utf-8")
+    if args.jd:
+        jd_text = Path(args.jd).read_text(encoding="utf-8")
+    elif job is not None:
+        from src import ingest
+
+        try:
+            with console.status("Fetching the job description…"):
+                jd_text = ingest.fetch_posting(job["url"]).jd_text
+        except NotImplementedError as e:
+            raise SystemExit(f"{e}; save the JD to a file and pass --jd")
+    else:
+        raise SystemExit("pass --jd <file> (or --job-id for a Greenhouse job to fetch it automatically)")
     with console.status("Tailoring (extract → select → rewrite → render)…"):
         result = tailor.tailor(
             jd_text, company, role,
@@ -194,7 +205,7 @@ def main() -> None:
     p.set_defaults(func=cmd_render)
 
     p = sub.add_parser("tailor", help="tailor a 1-page resume to a JD via headless Claude Code")
-    p.add_argument("--jd", required=True, help="path to the JD text file")
+    p.add_argument("--jd", help="path to the JD text file (optional with --job-id for Greenhouse jobs)")
     p.add_argument("--job-id", type=int, help="tracked job id; fills company/role and links the review")
     p.add_argument("--company")
     p.add_argument("--role")
