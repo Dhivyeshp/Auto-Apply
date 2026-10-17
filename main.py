@@ -106,6 +106,7 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
             max_bullets=tcfg.get("max_bullets", 15),
             min_score=tcfg.get("min_score", 20),
             rewrite=not args.no_rewrite,
+            coverage_threshold=tcfg.get("coverage_threshold", 50),
         )
     a = result.analysis
     console.print(f"[bold]{args.company} — {args.role}[/bold]  ({a.role_category})  {a.summary}")
@@ -114,7 +115,31 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
                   f"rewrites accepted {len(result.texts)}, rejected {len(result.rejected)}")
     for bid, problems in result.rejected.items():
         console.print(f"  [yellow]kept original {bid}:[/yellow] {'; '.join(problems)}")
+    print_coverage(result.coverage)
     console.print(f"[green]{result.pdf}[/green]")
+
+
+def print_coverage(cov) -> None:
+    color = "red" if cov.below_threshold else "green"
+    console.print(f"ATS coverage [{color}]{cov.coverage_pct}%[/{color}] of keywords, "
+                  f"must-haves {cov.must_have_pct}%" + ("  [red]⚠ below threshold[/red]" if cov.below_threshold else ""))
+    if cov.must_have_missing:
+        console.print(f"  [yellow]missing must-haves:[/yellow] {', '.join(cov.must_have_missing)}")
+    if cov.missing:
+        console.print(f"  [dim]missing keywords: {', '.join(cov.missing)}[/dim]")
+
+
+def cmd_ats(args: argparse.Namespace, cfg: dict) -> None:
+    import json
+
+    from src import ats_check
+
+    out_dir = Path(args.dir)
+    record = json.loads((out_dir / "tailoring.json").read_text(encoding="utf-8"))
+    a = record["analysis"]
+    cov = ats_check.check_pdf(out_dir / "resume.pdf", a["keywords"], a["must_have"],
+                              cfg.get("tailor", {}).get("coverage_threshold", 50))
+    print_coverage(cov)
 
 
 def main() -> None:
@@ -143,6 +168,10 @@ def main() -> None:
     p.add_argument("--model", help="override tailor.model from config")
     p.add_argument("--no-rewrite", action="store_true", help="select only; keep bullet text verbatim")
     p.set_defaults(func=cmd_tailor)
+
+    p = sub.add_parser("ats", help="re-check keyword coverage of a tailored output folder")
+    p.add_argument("dir", help="output/{company}_{role}_{date} folder")
+    p.set_defaults(func=cmd_ats)
 
     args = parser.parse_args()
     args.func(args, load_config(Path(args.config)))

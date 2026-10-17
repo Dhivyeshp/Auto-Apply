@@ -14,7 +14,7 @@ from typing import Any, Callable, Literal, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
-from src import render
+from src import ats_check, render
 from src.schemas import BulletBank, Profile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -163,6 +163,7 @@ class TailorResult:
     dropped: list[str]
     texts: dict[str, str]
     rejected: dict[str, list[str]]
+    coverage: ats_check.Coverage
 
 
 def _bullet_sections(bank: BulletBank) -> dict[str, str]:
@@ -198,6 +199,7 @@ def tailor(
     max_bullets: int = 15,
     min_score: int = 20,
     rewrite: bool = True,
+    coverage_threshold: float = 50.0,
 ) -> TailorResult:
     out_dir = out_root / f"{slug(company)}_{slug(role)}_{date.today().isoformat()}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -239,6 +241,7 @@ def tailor(
                 texts[rw.id] = new
 
     fit = render.fit_one_page(profile, bank, ranked, out_dir, texts=texts)
+    cov = ats_check.check_pdf(fit.pdf, analysis.keywords, analysis.must_have, coverage_threshold)
 
     (out_dir / "tailoring.json").write_text(json.dumps({
         "company": company,
@@ -251,6 +254,7 @@ def tailor(
         "rewrites_accepted": texts,
         "rewrites_rejected": {i: {"proposed": proposed[i], "problems": p} for i, p in rejected.items()},
         "original_text": {i: by_id[i].text for i in fit.kept},
+        "ats": cov.to_dict(),
     }, indent=2), encoding="utf-8")
 
-    return TailorResult(out_dir, fit.pdf, analysis, ranked, fit.kept, fit.dropped, texts, rejected)
+    return TailorResult(out_dir, fit.pdf, analysis, ranked, fit.kept, fit.dropped, texts, rejected, cov)
