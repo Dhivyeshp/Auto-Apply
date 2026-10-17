@@ -80,6 +80,19 @@ def cmd_jobs(args: argparse.Namespace, cfg: dict) -> None:
     console.print(jobs_table(jobs, f"Jobs ({args.status or 'all'}): {len(jobs)}", limit=args.limit))
 
 
+def cmd_render(args: argparse.Namespace, cfg: dict) -> None:
+    from src import render, schemas
+
+    profile, bank = schemas.load_profile(), schemas.load_bullets()
+    # base resume: every bullet, ranked by priority (stable within the bank's order)
+    ranked = [b.id for b in sorted(bank.all_bullets(), key=lambda b: b.priority)]
+    with console.status("Compiling resume…"):
+        result = render.fit_one_page(profile, bank, ranked, Path(args.out))
+    console.print(f"[green]{result.pdf}[/green]  pages={result.pages}  bullets={len(result.kept)}")
+    if result.dropped:
+        console.print(f"[yellow]dropped to fit 1 page:[/yellow] {', '.join(result.dropped)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="autoapply")
     parser.add_argument("--config", default=str(ROOT / "config.yaml"))
@@ -94,6 +107,10 @@ def main() -> None:
     p.add_argument("--status", default="queued", help="filter by status ('' = all)")
     p.add_argument("--limit", type=int, default=50, help="rows to show (0 = all)")
     p.set_defaults(func=cmd_jobs)
+
+    p = sub.add_parser("render", help="render the base resume (all bullets) to a 1-page PDF")
+    p.add_argument("--out", default=str(ROOT / "output" / "base"))
+    p.set_defaults(func=cmd_render)
 
     args = parser.parse_args()
     args.func(args, load_config(Path(args.config)))

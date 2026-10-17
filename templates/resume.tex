@@ -1,0 +1,112 @@
+((= Jinja-templated resume. Delimiters (set in src/render.py): triple parens for vars, paren-star for blocks. =))
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+\titleformat{\section}{\vspace{-4pt}\scshape\raggedright\large}{}{0em}{}[\titlerule \vspace{-5pt}]
+
+\newcommand{\resumeItem}[1]{\item\small{#1 \vspace{-2pt}}}
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+\begin{document}
+
+\begin{center}
+    {\Huge \scshape ((( name )))} \\ \vspace{1pt}
+    \small ((( contact_line )))
+\end{center}
+
+\section{Education}
+  \resumeSubHeadingListStart
+((* for ed in education *))
+    \resumeSubheading{((( ed.school )))}{((( ed.location )))}{((( ed.degree )))}{((( ed.graduation )))}
+((* if ed.coursework or ed.leadership *))
+      \resumeItemListStart
+((* if ed.coursework *))
+        \resumeItem{\textbf{Coursework:} ((( ed.coursework )))}
+((* endif *))
+((* if ed.leadership *))
+        \resumeItem{\textbf{Leadership:} ((( ed.leadership )))}
+((* endif *))
+      \resumeItemListEnd
+((* endif *))
+((* endfor *))
+  \resumeSubHeadingListEnd
+
+((* if experience *))
+\section{Experience}
+  \resumeSubHeadingListStart
+((* for job in experience *))
+    \resumeSubheading{((( job.title )))}{((( job.dates )))}{((( job.org_line )))}{((( job.location )))}
+      \resumeItemListStart
+((* for b in job.bullets *))
+        \resumeItem{((( b )))}
+((* endfor *))
+      \resumeItemListEnd
+((* endfor *))
+  \resumeSubHeadingListEnd
+((* endif *))
+
+((* if projects *))
+\section{Projects}
+    \resumeSubHeadingListStart
+((* for p in projects *))
+      \resumeProjectHeading{\textbf{((( p.name )))} $|$ \emph{((( p.tech_line )))}}{((( p.dates )))}
+          \resumeItemListStart
+((* for b in p.bullets *))
+            \resumeItem{((( b )))}
+((* endfor *))
+          \resumeItemListEnd
+((* endfor *))
+    \resumeSubHeadingListEnd
+((* endif *))
+
+\section{Technical Skills}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+((* for s in skills *))
+     \textbf{((( s.label )))}: ((( s.list )))((* if not loop.last *)) \\((* endif *))
+((* endfor *))
+    }}
+ \end{itemize}
+
+\end{document}

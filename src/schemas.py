@@ -38,6 +38,7 @@ class Experience(BaseModel):
     org: str
     title: str
     team: str | None = None
+    org_line: str | None = None  # how the org renders; defaults to "org (team)"
     location: str
     dates: str
     bullets: list[Bullet]
