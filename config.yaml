@@ -1,0 +1,37 @@
+# Discovery filters for src/discover/simplify.py
+
+db_path: data/autoapply.db
+
+source:
+  # Tried in order. The path has moved before, so keep a fallback.
+  urls:
+    - https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json
+    - https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/main/.github/scripts/listings.json
+
+# Normalized categories: swe, ml, hardware, pm, quant
+categories:
+  swe: true
+  ml: true
+  hardware: true
+  pm: false
+  quant: false
+
+terms:
+  - Summer 2027
+  - Spring 2027
+  - Fall 2027
+
+title:
+  include: [intern, internship, co-op, coop]
+  exclude: [phd, mba, senior, staff, principal]
+
+locations:
+  us_only: true          # non-US dropped unless a location is US or US-remote
+  preferred: [TX, Texas, Austin, Dallas, Houston, San Antonio, remote]
+
+sponsorship:
+  exclude_no_sponsorship: false       # drop "Does Not Offer Sponsorship"
+  exclude_citizenship_required: false # drop "U.S. Citizenship is Required"
+
+notify:
+  enabled: false   # email/Discord ping with daily new count (not built yet)
