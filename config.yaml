@@ -7,6 +7,14 @@ source:
   urls:
     - https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json
     - https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/main/.github/scripts/listings.json
+  # more community lists; "season" format has no year/category/degrees: the year comes from the posting
+  # date (or a year in the title) and the category from the title
+  extra:
+    - name: vanshb03
+      format: season
+      urls:
+        - https://raw.githubusercontent.com/vanshb03/Summer2027-Internships/dev/.github/scripts/listings.json
+        - https://raw.githubusercontent.com/vanshb03/Summer2027-Internships/main/.github/scripts/listings.json
 
 # Normalized categories: swe, ml, hardware, pm, quant
 categories:

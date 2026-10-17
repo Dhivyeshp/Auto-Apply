@@ -164,3 +164,98 @@ def test_run_on_fixture(cfg):
         assert set(job["terms"]) & set(cfg["terms"])
         assert job["category"] in {"swe", "ml", "hardware"}
         assert any(simplify.is_us_location(loc) for loc in job["locations"])
+
+
+# ---- extra "season" feeds and cross-list dedupe ----
+
+@pytest.mark.parametrize(
+    "title,cat",
+    [
+        ("Software Engineer Intern, Backend & API", "swe"),
+        ("Software Engineer Intern, ML Ops", "ml"),
+        ("Data Scientist Intern", "ml"),
+        ("LLM Post-training Engineer Intern", "ml"),
+        ("Equity Volatility Quant Researcher Intern", "quant"),
+        ("Embedded Firmware Intern", "hardware"),
+        ("Associate Product Manager Intern", "pm"),
+        ("Linux Engineer Intern", "swe"),
+    ],
+)
+def test_category_from_title(title, cat):
+    assert simplify.category_from_title(title) == cat
+
+
+def test_adapt_season_listing(cfg):
+    raw = {"id": "v1", "company_name": "Physical Reasoning", "title": "Software Engineering Intern",
+           "season": "Spring/Summer", "active": True, "is_visible": True, "url": "https://x.ai/job/1",
+           "locations": ["San Francisco, CA", "Toronto, Canada"], "sponsorship": "Offers Sponsorship",
+           "date_posted": 1792261825}
+    adapted = simplify.adapt_season_listing(raw)  # posted Oct 2026
+    assert adapted["terms"] == ["Spring 2027", "Summer 2027"]
+    listing = simplify.normalize(adapted)
+    assert listing.category == "swe"
+    assert simplify.filter_reason(listing, cfg) is None
+    winter = simplify.normalize(simplify.adapt_season_listing({**raw, "season": "Winter"}))
+    assert simplify.filter_reason(winter, cfg) == "term"
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        ("https://jobs.lever.co/acme/123?utm_source=Simplify&ref=Simplify", "https://jobs.lever.co/acme/123/"),
+        ("https://www.acme.com/careers/1?gh_jid=55&utm_campaign=x", "https://acme.com/careers/1?gh_jid=55"),
+        ("http://boards.greenhouse.io/acme/jobs/9?gh_src=abc", "https://boards.greenhouse.io/acme/jobs/9"),
+    ],
+)
+def test_url_key_matches_same_posting(a, b):
+    from src import tracker
+    assert tracker.url_key(a) == tracker.url_key(b)
+
+
+def test_url_key_keeps_meaningful_params():
+    from src import tracker
+    assert tracker.url_key("https://acme.icims.com/jobs/1/job?mode=job") != tracker.url_key("https://acme.icims.com/jobs/1/job")
+
+
+def test_run_dedupes_across_lists(cfg, tmp_path):
+    from src import tracker
+    conn = tracker.connect(tmp_path / "t.db")
+    base = {"id": "s1", "source": "Simplify", "category": "Software", "company_name": "Acme",
+            "title": "Software Engineer Intern", "active": True, "is_visible": True, "terms": ["Summer 2027"],
+            "date_posted": 1790000000, "url": "https://jobs.lever.co/acme/1?utm_source=Simplify",
+            "locations": ["Austin, TX"], "sponsorship": "Other", "degrees": []}
+    stats = simplify.run(cfg, conn, listings=[base, {**base, "id": "v1", "url": "https://jobs.lever.co/acme/1"}])
+    assert stats["new"] == 1 and stats["drops"]["duplicate"] == 1
+    # the other list's copy showing up later is still not new
+    stats = simplify.run(cfg, conn, listings=[{**base, "id": "v2", "url": "https://jobs.lever.co/acme/1/"}])
+    assert stats["new"] == 0
+
+
+def _ts(y, m):
+    from datetime import datetime, timezone
+    return int(datetime(y, m, 15, tzinfo=timezone.utc).timestamp())
+
+
+@pytest.mark.parametrize(
+    "season,title,posted,year",
+    [
+        ("Summer", "SWE Intern", _ts(2026, 4), 2026),   # spring posting = this summer
+        ("Summer", "SWE Intern", _ts(2026, 8), 2027),   # recruiting season = next summer
+        ("Fall", "SWE Co-op", _ts(2026, 7), 2026),
+        ("Fall", "SWE Co-op", _ts(2026, 10), 2027),
+        ("Spring", "SWE Co-op", _ts(2026, 10), 2027),
+        ("Winter", "SWE Co-op", _ts(2026, 3), 2026),
+        ("Summer", "Software Intern - Summer 2028", _ts(2026, 8), 2028),  # year in title wins
+        ("Summer", "SWE Intern", None, None),
+    ],
+)
+def test_season_year(season, title, posted, year):
+    assert simplify.season_year(season, title, posted) == year
+
+
+def test_old_season_postings_are_filtered(cfg):
+    raw = {"id": "v2", "company_name": "Old Co", "title": "Software Engineer Intern", "season": "Summer",
+           "active": True, "is_visible": True, "url": "https://old.co/job", "locations": ["Austin, TX"],
+           "date_posted": _ts(2026, 4)}
+    listing = simplify.normalize(simplify.adapt_season_listing(raw))
+    assert listing.terms == ["Summer 2026"] and simplify.filter_reason(listing, cfg) == "term"

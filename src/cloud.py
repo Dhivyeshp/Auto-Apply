@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from src.discover import simplify
+from src.tracker import url_key
 
 MAX_SINGLE_PUSHES = 5  # more new jobs than this at once → one summary push
 
@@ -25,16 +26,22 @@ class CloudResult:
 
 
 def matching(cfg: dict, raw: list[dict]) -> list[simplify.Listing]:
-    out, urls = [], set()
+    out, keys = [], set()
     for r in raw:
         try:
             listing = simplify.normalize(r)
         except Exception:
             continue
-        if simplify.filter_reason(listing, cfg) is None and listing.url not in urls:
-            urls.add(listing.url)
+        key = url_key(listing.url)
+        if simplify.filter_reason(listing, cfg) is None and key not in keys:
+            keys.add(key)
             out.append(listing)
     return out
+
+
+def seen_markers(listing: simplify.Listing) -> set[str]:
+    """A job counts as seen if either its id or its normalized link was seen (lists overlap)."""
+    return {listing.listing_id, "u:" + url_key(listing.url)}
 
 
 def describe(listing: simplify.Listing, cfg: dict) -> str:
@@ -72,17 +79,21 @@ def env_sender(cfg: dict) -> Callable[[str, str, str | None], None]:
 
 def check(cfg: dict, seen_path: Path, send: Callable[[str, str, str | None], None],
           listings: list[dict] | None = None, etag_file: Path | None = None) -> CloudResult:
-    raw = listings if listings is not None else simplify.fetch_listings(cfg["source"]["urls"], etag_file=etag_file)
+    raw = listings if listings is not None else simplify.fetch_all(cfg, etag_file=etag_file)
     if raw is None:
         return CloudResult("unchanged")
     current = matching(cfg, raw)
-    ids = {l.listing_id for l in current}
+    ids = set().union(*(seen_markers(l) for l in current)) if current else set()
     if not seen_path.exists():  # first run: remember everything, alert nothing
         seen_path.parent.mkdir(parents=True, exist_ok=True)
         seen_path.write_text(json.dumps(sorted(ids)), encoding="utf-8")
         return CloudResult("seeded")
     seen = set(json.loads(seen_path.read_text(encoding="utf-8")))
-    res = CloudResult("checked", [l for l in current if l.listing_id not in seen])
+    if seen and not any(s.startswith("u:") for s in seen):
+        # state from before link-matching (and before extra lists): re-seed instead of alerting the backlog
+        seen_path.write_text(json.dumps(sorted(seen | ids)), encoding="utf-8")
+        return CloudResult("seeded")
+    res = CloudResult("checked", [l for l in current if not (seen_markers(l) & seen)])
     for title, message, click in pushes(res.new, cfg):
         try:
             send(title, message, click)

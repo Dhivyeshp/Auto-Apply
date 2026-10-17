@@ -35,7 +35,33 @@ def test_first_run_seeds_without_alerting(cfg, tmp_path):
     out = Outbox()
     res = cloud.check(cfg, tmp_path / "seen.json", out, listings=[listing(1), listing(2)])
     assert res.status == "seeded" and out.sent == []
-    assert set(json.loads((tmp_path / "seen.json").read_text())) == {"id-1", "id-2"}
+    assert set(json.loads((tmp_path / "seen.json").read_text())) == {
+        "id-1", "id-2", "u:jobs.lever.co/co1/1", "u:jobs.lever.co/co2/2"}
+
+
+def test_old_id_only_state_reseeds_silently(cfg, tmp_path):
+    seen = tmp_path / "seen.json"
+    seen.write_text(json.dumps(["id-1"]))  # format from before link matching
+    out = Outbox()
+    assert cloud.check(cfg, seen, out, listings=[listing(1), listing(2)]).status == "seeded"
+    assert out.sent == []
+    out2 = Outbox()
+    cloud.check(cfg, seen, out2, listings=[listing(1), listing(2), listing(3)])
+    assert [t for t, _, _ in out2.sent] == ["New: Co3"]
+
+
+def test_same_job_on_two_lists_alerts_once(cfg, tmp_path):
+    seen = tmp_path / "seen.json"
+    cloud.check(cfg, seen, Outbox(), listings=[listing(0)])
+    simplify_copy = {**listing(5), "url": "https://jobs.lever.co/co5/5?utm_source=Simplify&ref=Simplify"}
+    other_list_copy = {**listing(5), "id": "other-list-uuid", "url": "https://jobs.lever.co/co5/5/"}
+    out = Outbox()
+    cloud.check(cfg, seen, out, listings=[listing(0), simplify_copy, other_list_copy])
+    assert len(out.sent) == 1
+    # later, only the other list still has it: not alerted again
+    out2 = Outbox()
+    cloud.check(cfg, seen, out2, listings=[listing(0), other_list_copy])
+    assert out2.sent == []
 
 
 def test_alerts_only_new_matching_jobs(cfg, tmp_path):

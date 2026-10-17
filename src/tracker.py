@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 STATUSES = ("queued", "drafted", "submitted", "skipped", "interview", "rejected", "offer")
 
@@ -41,7 +43,17 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 """
 
 # columns added after the first release; init_db adds any an older database lacks
-_MIGRATIONS = {"tailor_dir": "TEXT", "tailored_at": "TEXT", "rating": "INTEGER"}
+_MIGRATIONS = {"tailor_dir": "TEXT", "tailored_at": "TEXT", "rating": "INTEGER", "url_key": "TEXT"}
+
+_TRACKING_PARAMS = re.compile(r"^(utm_.*|ref|refs|source|src|gh_src|lever-source.*|lever-origin)$", re.I)
+
+
+def url_key(url: str) -> str:
+    """The same posting from different lists: drop scheme, www, trailing slash, and tracking params."""
+    u = urlparse(url.strip())
+    host = (u.hostname or "").lower().removeprefix("www.")
+    query = sorted((k, v) for k, v in parse_qsl(u.query, keep_blank_values=True) if not _TRACKING_PARAMS.match(k))
+    return f"{host}{u.path.rstrip('/')}" + (f"?{urlencode(query)}" if query else "")
 
 _JSON_COLS = ("terms", "locations", "degrees")
 _UPDATABLE = {"date_applied", "resume_path", "coverage_pct", "notes"}
@@ -63,12 +75,18 @@ def init_db(conn: sqlite3.Connection) -> None:
     for col, typ in _MIGRATIONS.items():
         if col not in have:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {typ}")
+    for job_id, url in conn.execute("SELECT id, url FROM jobs WHERE url_key IS NULL").fetchall():
+        conn.execute("UPDATE jobs SET url_key = ? WHERE id = ?", (url_key(url), job_id))
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_url_key ON jobs(url_key)")
     conn.commit()
 
 
 def insert_job(conn: sqlite3.Connection, job: dict[str, Any]) -> bool:
-    """Insert a new job; returns False if its listing_id or url is already tracked."""
+    """Insert a new job; returns False if its listing_id, url, or url_key is already tracked."""
     row = dict(job)
+    row["url_key"] = row.get("url_key") or url_key(row["url"])
+    if conn.execute("SELECT 1 FROM jobs WHERE url_key = ?", (row["url_key"],)).fetchone():
+        return False
     for col in _JSON_COLS:
         if col in row and not isinstance(row[col], str):
             row[col] = json.dumps(row[col])

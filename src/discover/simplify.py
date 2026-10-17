@@ -208,6 +208,7 @@ def to_job(listing: Listing, cfg: dict[str, Any]) -> dict[str, Any]:
         "company": listing.company,
         "role": listing.role,
         "url": listing.url,
+        "url_key": tracker.url_key(listing.url),
         "ats": listing.ats,
         "category": listing.category,
         "terms": listing.terms,
@@ -220,6 +221,74 @@ def to_job(listing: Listing, cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ---- other community lists in the "season" format (e.g. vanshb03/Summer2027-Internships) ----
+
+_TITLE_CATEGORIES = [  # first match wins
+    ("quant", r"\bquant|\btrad(ing|er)\b"),
+    ("pm", r"\bproduct (manag|owner)|\bPM\b|\bAPM\b"),
+    ("hardware", r"\bhardware|\belectrical|\bembedded|\bfpga\b|\basic\b|\bcircuit|\bsilicon|\bRF\b|\bpcb\b"),
+    ("ml", r"machine learning|\bML\b|\bAI\b|\bLLM|data scien|data analy|deep learning|computer vision|"
+           r"\bresearch scientist|\bNLP\b|\bmodel"),
+]
+
+
+def category_from_title(title: str) -> str:
+    for cat, pattern in _TITLE_CATEGORIES:
+        if re.search(pattern, title, re.I):
+            return cat
+    return "swe"
+
+
+_CATEGORY_LABELS = {"swe": "Software", "ml": "AI/ML/Data", "hardware": "Hardware", "pm": "Product", "quant": "Quant"}
+
+
+# A season posted on/after this month refers to next year's season. Fitted against SimplifyJobs, which has
+# explicit years: e.g. "Summer" posted Apr-May 2026 = Summer 2026, posted Jul-Oct 2026 = Summer 2027.
+_SEASON_CUTOVER = {"Winter": 6, "Spring": 3, "Summer": 7, "Fall": 9}
+
+
+def season_year(season: str, title: str, posted: int | None) -> int | None:
+    m = re.search(r"\b(20\d\d)\b", title or "")
+    if m:
+        return int(m.group(1))
+    if not posted or season not in _SEASON_CUTOVER:
+        return None
+    d = datetime.fromtimestamp(posted, timezone.utc)
+    return d.year + (1 if d.month >= _SEASON_CUTOVER[season] else 0)
+
+
+def adapt_season_listing(raw: dict[str, Any]) -> dict[str, Any]:
+    """Season-style listing ("season": "Spring/Summer", no year/category/degrees) → SimplifyJobs shape."""
+    seasons = [s.strip() for s in (raw.get("season") or "").split("/") if s.strip()]
+    terms = []
+    for s in seasons:
+        year = season_year(s, raw.get("title") or "", raw.get("date_posted"))
+        if year:
+            terms.append(f"{s} {year}")
+    return {
+        **raw,
+        "terms": terms,
+        "category": _CATEGORY_LABELS[category_from_title(raw.get("title") or "")],
+        "degrees": raw.get("degrees") or [],
+    }
+
+
+def fetch_all(cfg: dict[str, Any], etag_file: Path | None = None) -> list[dict[str, Any]] | None:
+    """SimplifyJobs plus any extra feeds in config. None only if every feed is unchanged."""
+    src = cfg["source"]
+    feeds = [{"name": "simplify", "urls": src["urls"], "format": "simplify"}] + list(src.get("extra") or [])
+    combined, any_changed = [], False
+    for feed in feeds:
+        data = fetch_listings(feed["urls"], etag_file=etag_file)
+        if data is None:
+            continue
+        any_changed = True
+        if feed.get("format") == "season":
+            data = [adapt_season_listing(r) for r in data]
+        combined += data
+    return combined if any_changed else None
+
+
 def run(
     cfg: dict[str, Any],
     conn: sqlite3.Connection | None,
@@ -228,13 +297,13 @@ def run(
     etag_file: Path | None = None,
 ) -> dict[str, Any]:
     """Fetch, filter, and queue. Returns stats plus the kept/new jobs."""
-    raw_listings = listings if listings is not None else fetch_listings(cfg["source"]["urls"], etag_file=etag_file)
-    if raw_listings is None:  # feed unchanged since the last fetch
+    raw_listings = listings if listings is not None else fetch_all(cfg, etag_file=etag_file)
+    if raw_listings is None:  # every feed unchanged since the last fetch
         return {"total": 0, "kept": 0, "new": 0, "drops": {}, "kept_jobs": [], "new_jobs": [], "unchanged": True}
     drops: Counter[str] = Counter()
     kept: list[dict[str, Any]] = []
     new: list[dict[str, Any]] = []
-    seen_urls: set[str] = set()
+    seen_keys: set[str] = set()
     for raw in raw_listings:
         try:
             listing = normalize(raw)
@@ -245,10 +314,11 @@ def run(
         if reason:
             drops[reason] += 1
             continue
-        if listing.url in seen_urls:
-            drops["duplicate_in_feed"] += 1
+        key = tracker.url_key(listing.url)
+        if key in seen_keys:  # same posting listed twice (within or across feeds)
+            drops["duplicate"] += 1
             continue
-        seen_urls.add(listing.url)
+        seen_keys.add(key)
         job = to_job(listing, cfg)
         kept.append(job)
         if not dry_run and conn is not None and tracker.insert_job(conn, job):
