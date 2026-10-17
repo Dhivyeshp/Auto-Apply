@@ -122,6 +122,7 @@ def rerender(out_dir: Path, record: dict, profile: Profile, bank: BulletBank, st
         "original_text": {i: by_id[i].text for i in fit.kept},
         "ats": cov.to_dict(),
         "edited_in_review": True,
+        "rating_stale": bool(record.get("rating")),
     })
     save_record(out_dir, record)
     return cov
@@ -172,6 +173,18 @@ def show(console: Console, record: dict, bank: BulletBank, state: ReviewState) -
         console.print(f"  [yellow]missing must-haves:[/yellow] {', '.join(cov['must_have_missing'])}")
     if cov.get("missing"):
         console.print(f"  [dim]missing keywords: {', '.join(cov['missing'])}[/dim]")
+    if record.get("rating"):
+        show_rating(console, record["rating"], stale=bool(record.get("rating_stale")))
+
+
+def show_rating(console: Console, r: dict, stale: bool = False) -> None:
+    color = "green" if r["score"] >= 7 else "yellow" if r["score"] >= 5 else "red"
+    note = "  [dim](before your edits; `python main.py rate <dir>` refreshes it)[/dim]" if stale else ""
+    console.print(f"Claude's fit rating [bold {color}]{r['score']}/10[/bold {color}]{note}  {r['verdict']}")
+    for s in r.get("strengths", []):
+        console.print(f"  [green]+[/green] {s}")
+    for g in r.get("gaps", []):
+        console.print(f"  [red]-[/red] {g}")
 
 
 def review(

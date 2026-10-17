@@ -65,10 +65,13 @@ def test_rank_ignores_unknown_ids():
 class FakeRunner:
     """Stands in for `claude -p`: answers by prompt file, can return bad output first."""
 
-    def __init__(self, rewrites, bad_first=False):
+    def __init__(self, rewrites, bad_first=False, rating=None):
         self.calls = []
         self.rewrites = rewrites
         self.bad_first = bad_first
+        self.rating = rating or {"score": 7, "verdict": "Solid backend fit.",
+                                 "strengths": ["Monitoring across 12 clouds"], "gaps": ["No Go experience"]}
+        self.rate_input = None
 
     def __call__(self, prompt, stdin_text, schema):
         self.calls.append(prompt[:40])
@@ -84,7 +87,23 @@ class FakeRunner:
                                for b in bullets]}
         if "rephrase resume bullets" in prompt:
             return {"rewrites": self.rewrites}
+        if "technical recruiter" in prompt:
+            self.rate_input = json.loads(stdin_text)
+            return self.rating
         raise AssertionError(prompt)
+
+
+@pytest.mark.parametrize(
+    "rating",
+    [
+        {"score": 11, "verdict": "x", "strengths": [], "gaps": []},
+        {"score": 0, "verdict": "x", "strengths": [], "gaps": []},
+        {"score": 5, "verdict": "x", "strengths": ["a", "b", "c", "d"], "gaps": []},
+    ],
+)
+def test_rating_rejects_out_of_range(rating):
+    with pytest.raises(Exception):
+        tailor.Rating.model_validate(rating)
 
 
 def test_call_retries_once_on_bad_output():
@@ -103,12 +122,18 @@ def test_tailor_end_to_end_with_fake_claude(tmp_path):
         # invents a metric: rejected, original kept
         {"id": "nrve-1", "text": "Shipped a personalized education app on a Python/Firebase backend serving 5,000+ beta users"},
     ]
+    runner = FakeRunner(rewrites)
     result = tailor.tailor("We want Python interns.", "Acme Corp", "SWE Intern", profile, bank,
-                           runner=FakeRunner(rewrites), out_root=tmp_path, max_bullets=12)
+                           runner=runner, out_root=tmp_path, max_bullets=12)
     assert result.pdf.exists()
+    assert result.rating.score == 7
+    # the rating sees the final rendered resume, rewrites included
+    assert "Developed an Instana" in runner.rate_input["resume"]
+    assert runner.rate_input["jd"] == "We want Python interns."
     assert result.texts == {"ibm-1": rewrites[1]["text"]}  # ibm-3 unchanged, so not an override
     assert "nrve-1" in result.rejected
     record = json.loads((result.out_dir / "tailoring.json").read_text(encoding="utf-8"))
     assert record["rewrites_rejected"]["nrve-1"]["problems"][0].startswith("new numbers")
+    assert record["rating"]["score"] == 7 and record["rating"]["gaps"] == ["No Go experience"]
     assert (result.out_dir / "jd.txt").read_text(encoding="utf-8") == "We want Python interns."
     assert result.out_dir.name.startswith("acme-corp_swe-intern_")

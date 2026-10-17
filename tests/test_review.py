@@ -76,6 +76,8 @@ def tailored(tmp_path, bank):
         "ranked": kept, "kept": fit.kept, "dropped_to_fit": [], "rewrites_accepted": {"ibm-1": IBM1_NEW},
         "ats": {"coverage_pct": 66.7, "must_have_pct": 100.0, "missing": ["Rust"], "must_have_missing": [],
                 "below_threshold": False},
+        "rating": {"score": 6, "verdict": "Plausible backend fit.", "strengths": ["IBM monitoring"],
+                   "gaps": ["No Rust"]},
     }
     review.save_record(tmp_path / "out", record)
     return tmp_path / "out", profile, conn
@@ -93,7 +95,10 @@ def quiet():
 @needs_latex
 def test_approve_marks_job_drafted(tailored, bank):
     out, profile, conn = tailored
-    assert review.review(out, profile, bank, conn, ask=scripted("a"), console=quiet()) == "approve"
+    console = quiet()
+    assert review.review(out, profile, bank, conn, ask=scripted("a"), console=console) == "approve"
+    shown = console.file.getvalue()
+    assert "6/10" in shown and "Plausible backend fit." in shown and "No Rust" in shown
     record = review.load_record(out)
     assert record["approved"]["sha256"] == review.sha256(out / "resume.pdf")
     job = tracker.get_job(conn, 1)
@@ -125,5 +130,6 @@ def test_edit_rerenders_then_approve(tailored, bank):
     assert "echo-1" not in record["kept"] and "acm-1" in record["kept"]
     assert record["rewrites_accepted"] == {}
     assert record["edited_in_review"] is True
+    assert record["rating_stale"] is True  # rating describes the pre-edit resume
     assert record["approved"]["sha256"] == review.sha256(out / "resume.pdf")
     assert IBM1.split()[0] in render.escape_latex((out / "resume.tex").read_text(encoding="utf-8"))

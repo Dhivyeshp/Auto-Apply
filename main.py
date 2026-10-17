@@ -136,7 +136,30 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
     for bid, problems in result.rejected.items():
         console.print(f"  [yellow]kept original {bid}:[/yellow] {'; '.join(problems)}")
     print_coverage(result.coverage)
+    if result.rating:
+        from src.review import show_rating
+
+        show_rating(console, result.rating.model_dump())
     console.print(f"[green]{result.pdf}[/green]")
+
+
+def cmd_rate(args: argparse.Namespace, cfg: dict) -> None:
+    import json
+
+    from src import tailor
+    from src.review import show_rating
+
+    out_dir = Path(args.dir)
+    record_path = out_dir / "tailoring.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    jd_text = (out_dir / "jd.txt").read_text(encoding="utf-8")
+    runner = tailor.claude_runner(model=cfg.get("tailor", {}).get("model", "sonnet"))
+    with console.status("Claude is rating the resume…"):
+        rating = tailor.rate(runner, jd_text, out_dir / "resume.pdf")
+    record["rating"] = rating.model_dump()
+    record.pop("rating_stale", None)
+    record_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    show_rating(console, record["rating"])
 
 
 def print_coverage(cov) -> None:
@@ -216,6 +239,10 @@ def main() -> None:
     p = sub.add_parser("ats", help="re-check keyword coverage of a tailored output folder")
     p.add_argument("dir", help="output/{company}_{role}_{date} folder")
     p.set_defaults(func=cmd_ats)
+
+    p = sub.add_parser("rate", help="have Claude (re)rate a tailored resume against its JD, 1-10")
+    p.add_argument("dir", help="output/{company}_{role}_{date} folder")
+    p.set_defaults(func=cmd_rate)
 
     p = sub.add_parser("review", help="review a tailored resume: diff, coverage, approve/edit/skip")
     p.add_argument("dir", help="output/{company}_{role}_{date} folder")

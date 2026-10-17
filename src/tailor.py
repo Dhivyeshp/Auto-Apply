@@ -57,6 +57,19 @@ class Rewrites(BaseModel):
     rewrites: list[Rewrite]
 
 
+class Rating(BaseModel):
+    score: int = Field(ge=1, le=10)
+    verdict: str
+    strengths: list[str] = Field(max_length=3)
+    gaps: list[str] = Field(max_length=3)
+
+
+def rate(runner: Runner, jd_text: str, pdf: Path) -> Rating:
+    """Recruiter-style 1-10 fit score for the rendered resume against the JD."""
+    payload = {"jd": jd_text[:12000], "resume": ats_check.pdf_text(pdf)}
+    return call(runner, "rate.md", json.dumps(payload), Rating)
+
+
 # ---- claude -p runner ----
 
 Runner = Callable[[str, str, dict], dict]
@@ -164,6 +177,7 @@ class TailorResult:
     texts: dict[str, str]
     rejected: dict[str, list[str]]
     coverage: ats_check.Coverage
+    rating: Rating | None = None
 
 
 def _bullet_sections(bank: BulletBank) -> dict[str, str]:
@@ -201,6 +215,7 @@ def tailor(
     rewrite: bool = True,
     coverage_threshold: float = 50.0,
     job_id: int | None = None,
+    with_rating: bool = True,
 ) -> TailorResult:
     out_dir = out_root / f"{slug(company)}_{slug(role)}_{date.today().isoformat()}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -243,6 +258,7 @@ def tailor(
 
     fit = render.fit_one_page(profile, bank, ranked, out_dir, texts=texts)
     cov = ats_check.check_pdf(fit.pdf, analysis.keywords, analysis.must_have, coverage_threshold)
+    rating = rate(runner, jd_text, fit.pdf) if with_rating else None
 
     (out_dir / "tailoring.json").write_text(json.dumps({
         "job_id": job_id,
@@ -257,6 +273,7 @@ def tailor(
         "rewrites_rejected": {i: {"proposed": proposed[i], "problems": p} for i, p in rejected.items()},
         "original_text": {i: by_id[i].text for i in fit.kept},
         "ats": cov.to_dict(),
+        "rating": rating.model_dump() if rating else None,
     }, indent=2), encoding="utf-8")
 
-    return TailorResult(out_dir, fit.pdf, analysis, ranked, fit.kept, fit.dropped, texts, rejected, cov)
+    return TailorResult(out_dir, fit.pdf, analysis, ranked, fit.kept, fit.dropped, texts, rejected, cov, rating)
