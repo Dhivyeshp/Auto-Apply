@@ -1,11 +1,10 @@
-import shutil
-
 import pytest
 
 from src import render, schemas
+from src.tools import find_exe
 
 needs_latex = pytest.mark.skipif(
-    not (shutil.which("tectonic") or shutil.which("pdflatex")), reason="no LaTeX engine"
+    not (find_exe("tectonic") or find_exe("pdflatex")), reason="no LaTeX engine"
 )
 
 

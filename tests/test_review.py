@@ -1,14 +1,14 @@
 import io
 import json
-import shutil
 
 import pytest
 from rich.console import Console
 
 from src import render, review, schemas, tracker
+from src.tools import find_exe
 
 needs_latex = pytest.mark.skipif(
-    not (shutil.which("tectonic") or shutil.which("pdflatex")), reason="no LaTeX engine"
+    not (find_exe("tectonic") or find_exe("pdflatex")), reason="no LaTeX engine"
 )
 
 IBM1 = "Engineered an Instana synthetic monitoring engine running API health checks across 12 global AWS/IBM Cloud environments"

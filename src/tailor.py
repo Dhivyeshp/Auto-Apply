@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -16,6 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src import ats_check, render
 from src.schemas import BulletBank, Profile
+from src.tools import find_exe
 
 ROOT = Path(__file__).resolve().parents[1]
 PROMPTS = ROOT / "prompts"
@@ -64,9 +64,9 @@ Runner = Callable[[str, str, dict], dict]
 
 def claude_runner(model: str = "sonnet", timeout: int = 300) -> Runner:
     """Run `claude -p` headless with tools off and a short system prompt; return structured output."""
-    exe = shutil.which("claude")
+    exe = find_exe("claude", "AUTOAPPLY_CLAUDE")
     if not exe:
-        raise RuntimeError("`claude` CLI not found on PATH")
+        raise RuntimeError("`claude` CLI not found: install Claude Code, or set AUTOAPPLY_CLAUDE to claude.exe's path")
 
     def run(prompt: str, stdin_text: str, schema: dict) -> dict:
         cmd = [

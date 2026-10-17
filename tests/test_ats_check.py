@@ -1,8 +1,7 @@
-import shutil
-
 import pytest
 
 from src import ats_check, render, schemas
+from src.tools import find_exe
 
 TEXT = ("Automated microservice validation in Python on Kubernetes. Built CI/CD with GitHub Actions. "
         "Open source contributor. Languages: C++, TypeScript, Go")
@@ -42,7 +41,7 @@ def test_empty_keywords_is_full_coverage():
     assert ats_check.coverage(TEXT, []).coverage_pct == 100.0
 
 
-@pytest.mark.skipif(not (shutil.which("tectonic") or shutil.which("pdflatex")), reason="no LaTeX engine")
+@pytest.mark.skipif(not (find_exe("tectonic") or find_exe("pdflatex")), reason="no LaTeX engine")
 def test_rendered_pdf_text_is_parseable(tmp_path):
     profile, bank = schemas.load_profile(), schemas.load_bullets()
     pdf = render.compile_pdf(render.render_tex(render.build_context(profile, bank)), tmp_path)

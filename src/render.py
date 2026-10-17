@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 import re
-import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +11,7 @@ import jinja2
 import pdfplumber
 
 from src.schemas import Bullet, BulletBank, Profile
+from src.tools import find_exe
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = ROOT / "templates"
@@ -144,10 +143,10 @@ def render_tex(context: dict) -> str:
 
 
 def _latex_cmd(tex: Path, out_dir: Path) -> list[str]:
-    tectonic = os.environ.get("AUTOAPPLY_TECTONIC") or shutil.which("tectonic")
+    tectonic = find_exe("tectonic", "AUTOAPPLY_TECTONIC")
     if tectonic:
         return [tectonic, "--chatter", "minimal", "--outdir", str(out_dir), str(tex)]
-    pdflatex = shutil.which("pdflatex")
+    pdflatex = find_exe("pdflatex")
     if pdflatex:
         return [pdflatex, "-interaction=nonstopmode", "-halt-on-error", f"-output-directory={out_dir}", str(tex)]
     raise RuntimeError("no LaTeX engine found: install tectonic (or pdflatex) or set AUTOAPPLY_TECTONIC")
