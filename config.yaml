@@ -53,7 +53,10 @@ watch:
   max_tailor_per_run: 5      # each tailor = 4 Claude calls on your Pro plan
   max_tailor_per_day: 20
 
+# Put real topics/webhooks in config.local.yaml (gitignored), not here: this file is public.
 notify:
   toast: true                # Windows notification
-  ntfy_topic: ""             # ntfy app topic for phone pushes (GitHub Actions uses the NTFY_TOPIC secret instead)
-  discord_webhook: ""        # paste a Discord webhook URL to also get alerts on your phone
+  ntfy_topic: ""             # ntfy topic for phone pushes (GitHub Actions uses the NTFY_TOPIC secret instead)
+  discord_webhook: ""
+  ready_push: true           # after pre-tailoring, push "Ready: Company — Role 8/10" with a tap-to-apply link
+  attach_resume: false       # also attach the tailored PDF to that push (uploads it to ntfy.sh for ~3 hours)

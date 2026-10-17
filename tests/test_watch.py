@@ -162,3 +162,50 @@ def test_send_reports_errors_instead_of_raising(monkeypatch):
     monkeypatch.setattr(notify, "toast", lambda t, l: (_ for _ in ()).throw(OSError("no toast")))
     errors = notify.send({"notify": {"toast": True}}, "t", ["l"])
     assert errors == ["toast: no toast"]
+
+
+def test_ready_callback_fires_per_tailored_job(cfg, conn, monkeypatch):
+    def fake(conn_, job, cfg_, runner, profile, bank):
+        if job["company"] == "Co3":
+            raise RuntimeError("closed")
+        tracker.set_tailored(conn_, job["id"], "/out", 8)
+        return f"result-{job['id']}"
+
+    monkeypatch.setattr(watch, "tailor_job", fake)
+    cfg["watch"]["max_tailor_per_run"] = 5
+    ready = []
+    def on_ready(job, result):
+        if job["company"] == "Co2":
+            raise OSError("push failed")
+        ready.append((job["company"], result))
+    res = watch.run_watch(cfg, conn, schemas.load_profile(), schemas.load_bullets(), runner=object(),
+                          notify=lambda t, l: [], listings=[listing(1), listing(2), listing(3)], on_ready=on_ready)
+    assert [c for c, _ in ready] == ["Co1"]  # Co2's push failed, Co3 never tailored
+    assert any("ready push" in e for e in res.errors) and any("closed" in e for e in res.errors)
+    assert res.alerted
+
+
+def test_send_ready(monkeypatch, tmp_path):
+    sent = []
+    monkeypatch.setattr(notify, "ntfy", lambda topic, title, msg, click=None, server="", tags=None:
+                        sent.append(("text", topic, title, msg, click)))
+    monkeypatch.setattr(notify, "ntfy_file", lambda topic, path, title, msg, click=None, server="":
+                        sent.append(("file", topic, title, path.name, click)))
+    job = {"id": 7, "company": "Acme", "role": "SWE Intern", "url": "https://jobs.lever.co/acme/1"}
+    pdf = tmp_path / "resume.pdf"
+    pdf.write_bytes(b"%PDF")
+    notify.send_ready({"notify": {}}, job, pdf, 8)  # no topic: nothing sent
+    notify.send_ready({"notify": {"ntfy_topic": "t"}}, job, pdf, 8, "Strong fit.")
+    notify.send_ready({"notify": {"ntfy_topic": "t", "attach_resume": True}}, job, pdf, 8)
+    assert sent[0][0] == "text" and sent[0][2] == "Ready: Acme · 8/10" and "go 7" in sent[0][3]
+    assert sent[0][4] == "https://jobs.lever.co/acme/1"
+    assert sent[1][0] == "file" and sent[1][3] == "resume.pdf"
+    assert len(sent) == 2
+
+
+def test_local_config_overrides(tmp_path):
+    import main
+    (tmp_path / "config.yaml").write_text("notify:\n  toast: true\n  ntfy_topic: ''\nwatch:\n  auto_tailor: true\n")
+    (tmp_path / "config.local.yaml").write_text("notify:\n  ntfy_topic: secret-topic\n")
+    cfg = main.load_config(tmp_path / "config.yaml")
+    assert cfg["notify"] == {"toast": True, "ntfy_topic": "secret-topic"} and cfg["watch"]["auto_tailor"]

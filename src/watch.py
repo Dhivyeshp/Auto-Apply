@@ -95,6 +95,7 @@ def run_watch(
     notify: Callable[[str, list[str]], list[str]],
     listings: list[dict] | None = None,
     log: Callable[[str], None] = lambda s: None,
+    on_ready: Callable[[dict, tailor.TailorResult], None] | None = None,
 ) -> WatchResult:
     wcfg = cfg.get("watch", {})
     res = WatchResult()
@@ -112,12 +113,19 @@ def run_watch(
     if wcfg.get("auto_tailor", True) and runner is not None:
         for job in _pick_for_tailoring(conn, new, wcfg):
             try:
-                tailor_job(conn, job, cfg, runner, profile, bank)
+                result = tailor_job(conn, job, cfg, runner, profile, bank)
                 res.tailored.append(job["id"])
                 log(f"tailored job {job['id']} {job['company']} — {job['role']}")
             except Exception as e:  # one bad posting must not stop the alert
                 res.errors.append(f"job {job['id']}: {e}")
                 log(f"tailor failed for job {job['id']}: {e}")
+                continue
+            if on_ready is not None:
+                try:
+                    on_ready(job, result)
+                except Exception as e:
+                    res.errors.append(f"ready push for job {job['id']}: {e}")
+                    log(f"ready push failed for job {job['id']}: {e}")
 
     res.new_jobs = [tracker.get_job(conn, j["id"]) for j in new]
     title, lines = alert_text(res.new_jobs)

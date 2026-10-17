@@ -17,9 +17,21 @@ ROOT = Path(__file__).resolve().parent
 console = Console()
 
 
+def _merge(base: dict, over: dict) -> dict:
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = _merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
 def load_config(path: Path) -> dict:
+    """config.yaml, overlaid with config.local.yaml (gitignored: topics, webhooks, personal tweaks)."""
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    local = path.with_name("config.local.yaml")
+    if local.exists():
+        cfg = _merge(cfg, yaml.safe_load(local.read_text(encoding="utf-8")) or {})
+    return cfg
 
 
 def jobs_table(jobs: list[dict], title: str, limit: int | None = None) -> Table:
@@ -229,9 +241,12 @@ def cmd_watch(args: argparse.Namespace, cfg: dict) -> None:
             return
         runner = None if args.no_tailor else tailor.claude_runner(model=cfg.get("tailor", {}).get("model", "sonnet"))
         try:
-            res = watch.run_watch(cfg, tracker.connect(ROOT / cfg["db_path"]), schemas.load_profile(),
-                                  schemas.load_bullets(), runner,
-                                  notify=lambda title, lines: notify.send(cfg, title, lines), log=_log)
+            res = watch.run_watch(
+                cfg, tracker.connect(ROOT / cfg["db_path"]), schemas.load_profile(), schemas.load_bullets(), runner,
+                notify=lambda title, lines: notify.send(cfg, title, lines), log=_log,
+                on_ready=lambda job, r: notify.send_ready(
+                    cfg, job, r.pdf, r.rating.score if r.rating else None, r.rating.verdict if r.rating else ""),
+            )
         except Exception as e:
             _log(f"watch failed: {e}")
             raise
