@@ -1,0 +1,47 @@
+<!doctype html>
+<html><body>
+<!-- Mimics jobs.ashbyhq.com application markup: ids = field paths, radios named <formId>_<path>,
+     checkboxes with ids <formId>_<path>-labeled-checkbox-N, Yes/No buttons beside a hidden checkbox. -->
+<form onsubmit="return false">
+  <div><label for="_systemfield_name">Name</label><input type="text" id="_systemfield_name" name="_systemfield_name"></div>
+  <div><label>Resume</label><input type="file" id="_systemfield_resume"></div>
+  <div><label>College/University</label>
+    <input type="text" role="combobox" placeholder="Search schools...">
+    <div id="school-menu"></div>
+  </div>
+  <div><label>Degree Level</label>
+    <input type="radio" id="f1_deg-labeled-radio-0" name="f1_deg"><label for="f1_deg-labeled-radio-0">Bachelor's</label>
+    <input type="radio" id="f1_deg-labeled-radio-1" name="f1_deg"><label for="f1_deg-labeled-radio-1">Master's</label>
+  </div>
+  <div><label>Teams</label>
+    <input type="checkbox" id="f1_teams-labeled-checkbox-0" name="Full Stack"><label for="f1_teams-labeled-checkbox-0">Full Stack</label>
+    <input type="checkbox" id="f1_teams-labeled-checkbox-1" name="Systems Software"><label for="f1_teams-labeled-checkbox-1">Systems Software</label>
+  </div>
+  <div class="field"><label>Are you a U.S. Person?</label>
+    <div><button type="button" class="yn" data-v="Yes">Yes</button><button type="button" class="yn" data-v="No">No</button></div>
+    <input type="checkbox" name="usperson" style="display:none">
+  </div>
+  <div class="field"><label>Related to an employee?</label>
+    <div><button type="button" class="yn" data-v="Yes">Yes</button><button type="button" class="yn" data-v="No">No</button></div>
+    <input type="checkbox" name="related" style="display:none">
+  </div>
+  <div><label for="why">Why?</label><textarea id="why" name="why"></textarea></div>
+  <button type="submit">Submit Application</button>
+</form>
+<script>
+  document.querySelectorAll('button.yn').forEach(b => b.onclick = () => {
+    const box = b.closest('.field').querySelector('input[type=checkbox]');
+    box.dataset.answer = b.dataset.v;
+  });
+  const combo = document.querySelector('[role=combobox]');
+  combo.addEventListener('input', () => {
+    const menu = document.getElementById('school-menu');
+    menu.innerHTML = '';
+    ['The University of Texas at Dallas', 'University of Dallas'].forEach(s => {
+      const d = document.createElement('div'); d.setAttribute('role', 'option'); d.textContent = s;
+      d.onclick = () => { combo.value = s; menu.innerHTML = ''; };
+      menu.appendChild(d);
+    });
+  });
+</script>
+</body></html>

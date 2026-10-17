@@ -102,14 +102,16 @@ def apply_job(
     """Returns 'submitted', 'skipped' or 'quit'."""
     from playwright.sync_api import sync_playwright
 
-    from src.apply import greenhouse as gh
+    from src.apply import ashby, common, greenhouse, lever
 
+    fillers = {"greenhouse": greenhouse, "lever": lever, "ashby": ashby}
     console = console or Console()
     job = tracker.get_job(conn, job_id)
     if job is None:
         raise ApplyError(f"no job with id {job_id}")
-    if job["ats"] != "greenhouse":
-        raise ApplyError(f"{job['ats']!r} apply isn't built yet (Greenhouse only so far)")
+    if job["ats"] not in fillers:
+        raise ApplyError(f"{job['ats']!r} apply isn't built (Greenhouse, Lever and Ashby are)")
+    filler = fillers[job["ats"]]
     pdf, record = approved_resume(job)
     out_dir = pdf.parent
 
@@ -129,9 +131,9 @@ def apply_job(
         browser = p.chromium.launch(headless=headless)
         page = browser.new_page(viewport={"width": 1280, "height": 900})
         with console.status("Filling the form…"):
-            results = gh.fill_form(page, answers, extra=plan.page_extras(profile), url=job["url"])
+            results = filler.fill_form(page, answers, extra=plan.page_extras(profile, job["ats"]), url=job["url"])
         fills = {r.name: (r.ok, r.error) for r in results}
-        shot = gh.screenshot(page, out_dir / "form.png")
+        shot = common.screenshot(page, out_dir / "form.png")
         while True:
             console.rule(f"[bold]{job['company']} — {job['role']}[/bold]")
             show_plan(console, answers, fills)
@@ -162,18 +164,18 @@ def apply_job(
                 ask_human([a], ask, console)
                 if a.value not in (None, "", []):
                     try:
-                        gh.fill_field(page, a)
+                        filler.fill_field(page, a)
                         fills[a.name] = (True, "")
                     except Exception as e:
-                        fills[a.name] = (False, str(e).splitlines()[0][:200])
-                    shot = gh.screenshot(page, out_dir / "form.png")
+                        fills[a.name] = (False, common.first_line(e))
+                    shot = common.screenshot(page, out_dir / "form.png")
                 log["answers"] = plan.to_json(answers)
                 save_apply(out_dir, log)
                 continue
             console.print(f"[red]unknown choice {choice!r}[/red] (type the word submit to submit)")
 
-        confirmed = gh.submit(page, wait_for_human=lambda msg: ask(msg + " "))
-        conf = gh.screenshot(page, out_dir / "confirmation.png")
+        confirmed = common.submit(page, wait_for_human=lambda msg: ask(msg + " "))
+        conf = common.screenshot(page, out_dir / "confirmation.png")
         if not confirmed:
             console.print(f"[yellow]Didn't see a confirmation message. Check the browser and {conf}.[/yellow]")
             confirmed = ask("Did the application go through? [y/N] ").strip().lower() == "y"

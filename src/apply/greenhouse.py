@@ -2,24 +2,13 @@
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
-from pathlib import Path
+from playwright.sync_api import Page
 
-from playwright.sync_api import Page, TimeoutError as PWTimeout
-
+from src.apply.common import FillResult, first_line
 from src.apply.plan import Answer, norm
 from src.ingest import parse_greenhouse_url
 
 FORM_URL = "https://job-boards.greenhouse.io/{board}/jobs/{job}"
-CONFIRM_RE = re.compile(r"thank you for applying|application (has been )?(received|submitted)|we.ve received your application", re.I)
-
-
-@dataclass
-class FillResult:
-    name: str
-    ok: bool
-    error: str = ""
 
 
 def form_url(url: str) -> str:
@@ -103,7 +92,7 @@ def fill_form(page: Page, answers: list[Answer], extra: dict[str, str | None] | 
                 choose_option(page, name, value)
                 results.append(FillResult(name, True))
             except Exception as e:
-                results.append(FillResult(name, False, str(e).splitlines()[0][:200]))
+                results.append(FillResult(name, False, first_line(e)))
     for a in answers:
         if a.source == "skip" or a.value in (None, "", []):
             continue
@@ -114,42 +103,5 @@ def fill_form(page: Page, answers: list[Answer], extra: dict[str, str | None] | 
             fill_field(page, a)
             results.append(FillResult(a.name, True))
         except Exception as e:  # keep going; failures are shown in review
-            results.append(FillResult(a.name, False, str(e).splitlines()[0][:200]))
+            results.append(FillResult(a.name, False, first_line(e)))
     return results
-
-
-def screenshot(page: Page, path: Path) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    page.screenshot(path=str(path), full_page=True)
-    return path
-
-
-def captcha_challenge_visible(page: Page) -> bool:
-    for frame in page.locator('iframe[src*="recaptcha"][src*="bframe"]').all():
-        try:
-            if frame.is_visible():
-                return True
-        except Exception:
-            pass
-    return False
-
-
-def submit(page: Page, wait_for_human, timeout_s: int = 120) -> bool:
-    """Click submit, hand off to the human for CAPTCHA or email codes, and wait for confirmation."""
-    page.get_by_role("button", name=re.compile(r"submit application", re.I)).click()
-    deadline = timeout_s * 1000
-    waited = 0
-    while waited < deadline:
-        body = page.locator("body").inner_text(timeout=5000)
-        if CONFIRM_RE.search(body):
-            return True
-        if captcha_challenge_visible(page) or re.search(r"security code|verification code", body, re.I):
-            wait_for_human("Finish the CAPTCHA / enter the emailed code in the browser, then press Enter here.")
-            waited = 0
-            continue
-        try:
-            page.wait_for_timeout(2000)
-        except PWTimeout:
-            pass
-        waited += 2000
-    return False

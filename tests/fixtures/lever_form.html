@@ -1,0 +1,29 @@
+<!doctype html>
+<html><body>
+<!-- Trimmed copy of a jobs.lever.co /apply page's form markup. -->
+<form id="application-form" method="POST" onsubmit="return false">
+  <input type="file" name="resume">
+  <input type="text" name="name" required>
+  <input type="email" name="email" required>
+  <input type="text" name="phone">
+  <input type="text" name="location">
+  <input type="text" name="org">
+  <input type="text" name="urls[LinkedIn]">
+  <input type="text" name="urls[GitHub]">
+  <input type="hidden" name="cards[c1][baseTemplate]" value="{&quot;text&quot;:&quot;Eligibility&quot;,&quot;fields&quot;:[{&quot;type&quot;:&quot;multiple-choice&quot;,&quot;text&quot;:&quot;Do you now or will you in the future require sponsorship?&quot;,&quot;required&quot;:true,&quot;options&quot;:[{&quot;text&quot;:&quot;Yes&quot;},{&quot;text&quot;:&quot;No&quot;}]},{&quot;type&quot;:&quot;dropdown&quot;,&quot;text&quot;:&quot;What is your current overall GPA?&quot;,&quot;required&quot;:true,&quot;options&quot;:[{&quot;text&quot;:&quot;4.0&quot;},{&quot;text&quot;:&quot;3.9&quot;}]},{&quot;type&quot;:&quot;multiple-select&quot;,&quot;text&quot;:&quot;Which terms?&quot;,&quot;required&quot;:false,&quot;options&quot;:[{&quot;text&quot;:&quot;Spring 2027&quot;},{&quot;text&quot;:&quot;Summer 2027&quot;}]},{&quot;type&quot;:&quot;textarea&quot;,&quot;text&quot;:&quot;Why us?&quot;,&quot;required&quot;:false},{&quot;type&quot;:&quot;file-upload&quot;,&quot;text&quot;:&quot;Transcript&quot;,&quot;required&quot;:true}]}">
+  <label><input type="radio" name="cards[c1][field0]" value="Yes">Yes</label>
+  <label><input type="radio" name="cards[c1][field0]" value="No">No</label>
+  <select name="cards[c1][field1]"><option value="">Select...</option><option value="4.0">4.0</option><option value="3.9">3.9</option></select>
+  <label><input type="checkbox" name="cards[c1][field2]" value="Spring 2027">Spring 2027</label>
+  <label><input type="checkbox" name="cards[c1][field2]" value="Summer 2027">Summer 2027</label>
+  <textarea name="cards[c1][field3]"></textarea>
+  <select name="eeo[gender]"><option value="">Select...</option><option value="Male">Male</option><option value="Female">Female</option></select>
+  <label><input type="radio" name="eeo[race]" value="White (Not Hispanic or Latino)">White</label>
+  <label><input type="radio" name="eeo[race]" value="Asian (Not Hispanic or Latino)">Asian</label>
+  <select name="eeo[veteran]"><option value="">Select...</option><option value="I am a Protected Veteran">I am a protected veteran</option><option value="I am not a Protected Veteran">I am not a protected veteran</option></select>
+  <select name="eeo[disability]"><option value="">Select...</option><option value="Yes, I have a disability, or have had one in the past">Yes</option><option value="No, I do not have a disability and have not had one in the past">No</option></select>
+  <input type="text" name="eeo[disabilitySignature]">
+  <input type="text" name="eeo[disabilitySignatureDate]">
+  <button type="submit">Submit application</button>
+</form>
+</body></html>

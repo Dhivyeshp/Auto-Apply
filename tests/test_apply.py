@@ -56,12 +56,13 @@ def test_match_option(options, wanted, expected):
 
 
 def test_profile_and_eeo(profile, no_saved):
-    qs = [Question("first_name", "First Name", "text", True), Question("phone", "Phone", "text", True),
-          Question("resume", "Resume/CV", "file", True),
-          Question("gender", "Gender", "select", False, ["Decline To Self Identify", "Female", "Male"], "eeo"),
+    qs = [Question("first_name", "First Name", "text", True, key="first_name"),
+          Question("phone", "Phone", "text", True, key="phone"),
+          Question("resume", "Resume/CV", "file", True, key="resume"),
+          Question("gender", "Gender", "select", False, ["Decline To Self Identify", "Female", "Male"], "eeo", "gender"),
           Question("veteran_status", "VeteranStatus", "select", False,
                    ["I don't wish to answer", "I identify as one or more of the classifications of a protected veteran",
-                    "I am not a protected veteran"], "eeo")]
+                    "I am not a protected veteran"], "eeo", "veteran")]
     ans = {a.name: a for a in plan.resolve(qs, profile, Path("r.pdf"), no_saved)}
     assert ans["first_name"].value == "Dhivyesh"
     assert ans["resume"].value == "r.pdf"
@@ -213,6 +214,6 @@ def test_race_hidden_reported_not_crashed(page):
 
 
 def test_submit_detects_confirmation(page):
-    from src.apply import greenhouse as gh
+    from src.apply import common
 
-    assert gh.submit(page, wait_for_human=lambda m: None, timeout_s=10) is True
+    assert common.submit(page, wait_for_human=lambda m: None, timeout_s=10) is True

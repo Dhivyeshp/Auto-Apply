@@ -18,6 +18,9 @@ ANSWERS_PATH = ROOT / "data" / "answers.json"
 
 Source = Literal["profile", "rule", "saved", "claude", "you", "skip"]
 
+MONTHS = {m[:3].lower(): m for m in ("January", "February", "March", "April", "May", "June", "July", "August",
+                                     "September", "October", "November", "December")}
+
 
 @dataclass
 class Answer:
@@ -29,6 +32,8 @@ class Answer:
     source: Source
     note: str = ""
     options: list[str] = field(default_factory=list)
+    key: str | None = None
+    widget: str = ""
 
     @property
     def missing(self) -> bool:
@@ -77,25 +82,26 @@ def _yes_no(q: Question, yes: bool) -> str | None:
 def _profile_answer(q: Question, profile: Profile, resume_path: Path | None) -> tuple[Any, str] | None:
     first, _, last = profile.name.partition(" ")
     ed = profile.education[0] if profile.education else None
-    by_name = {
+    by_key = {
         "first_name": first,
         "last_name": last or first,
+        "full_name": profile.name,
         "email": profile.email,
         "phone": profile.phone,
         "location": profile.location,
     }
-    if q.name in by_name:
-        return by_name[q.name], ""
-    if q.name == "resume":
+    if q.key in by_key:
+        return by_key[q.key], ""
+    if q.key == "resume":
         return (str(resume_path) if resume_path else None), "tailored PDF"
     eeo = {
         "gender": profile.eeo.gender,
         "race": profile.eeo.race_ethnicity,
-        "veteran_status": profile.eeo.veteran,
-        "disability_status": profile.eeo.disability,
+        "veteran": profile.eeo.veteran,
+        "disability": profile.eeo.disability,
     }
-    if q.name in eeo and eeo[q.name]:
-        return match_option(q.options, eeo[q.name]), ""
+    if q.key in eeo and eeo[q.key]:
+        return match_option(q.options, eeo[q.key]), ""
     label = norm(q.label)
     if re.search(r"\blinkedin\b", label):
         return profile.links.linkedin, ""
@@ -129,6 +135,9 @@ def _rule_answer(q: Question, profile: Profile, answers: dict) -> tuple[Any, str
         opt = match_option(q.options, "U.S. Citizen", "US Citizen", "Citizen")
         if opt:
             return opt, "US citizen"
+    # export-control "U.S. Person" = citizen, permanent resident, or protected individual
+    if re.search(r"\bu s person\b|\bus person\b", label) and wa.us_citizen and len(q.options) <= 2:
+        return _yes_no(q, True), "US citizen"
     if re.search(r"\bus citizen\b|citizen of the united states", label) and wa.us_citizen is not None:
         return _yes_no(q, wa.us_citizen), "work authorization"
     if "relocat" in label and av.willing_to_relocate is not None:
@@ -162,14 +171,21 @@ def _rule_answer(q: Question, profile: Profile, answers: dict) -> tuple[Any, str
             return opt, "education"
     if ed and re.search(r"graduat", label):
         month, _, year = ed.graduation.partition(" ")
-        full_month = {"Aug": "August", "May": "May", "Dec": "December", "Jun": "June"}.get(month, month)
+        full_month = MONTHS.get(month[:3].lower(), month)
         if q.type == "text":
             return ed.graduation, "education"
         opt = match_option(q.options, ed.graduation, f"{full_month} {year}")
-        if opt is None and not any(re.search(r"[a-z]", norm(o)) for o in q.options):
-            opt = match_option(q.options, year)  # year-only option lists
+        has_words = any(re.search(r"[a-z]", norm(o)) for o in q.options)
+        if opt is None and not has_words:
+            opt = match_option(q.options, year)  # "Expected graduation year": 2026 / 2027 / ...
+        if opt is None and has_words and not any(re.search(r"\d", o) for o in q.options):
+            opt = match_option(q.options, full_month)  # "Expected graduation month": April/May/June, August/September
         if opt:
             return opt, "education"
+    if ed and re.search(r"\b(major|field of study|area of study)\b", label) and q.type in ("text", "textarea"):
+        m = re.search(r"\bin (.+)$", ed.degree)
+        if m:
+            return m.group(1).strip(), "education"
     return None
 
 
@@ -184,7 +200,7 @@ def resolve(
     saved = answers.get("by_label", {})
     out: list[Answer] = []
     for q in questions:
-        a = Answer(q.name, q.label, q.type, q.required, None, "you", options=q.options)
+        a = Answer(q.name, q.label, q.type, q.required, None, "you", options=q.options, key=q.key, widget=q.widget)
         prev = out[-1] if out else None
         follows_other = (prev is not None and isinstance(prev.value, str) and norm(prev.value).startswith("other")
                          and re.search(r"how did you (hear|learn|find)", norm(prev.label)))
@@ -192,7 +208,9 @@ def resolve(
             a.value, a.source, a.note = answers["how_did_you_hear_detail"], "saved", "detail for 'Other'"
         elif q.type == "hidden" or q.name in ("resume_text", "cover_letter_text"):
             a.source, a.note = "skip", "filled by the page"
-        elif q.name == "cover_letter" and not q.required:
+        elif q.type == "unsupported":
+            a.source, a.note = ("you" if q.required else "skip"), f"fill in the browser ({q.widget} field)"
+        elif q.key == "cover_letter" and not q.required:
             a.source, a.note = "skip", "optional"
         elif (hit := _profile_answer(q, profile, resume_path)) is not None and hit[0] not in (None, ""):
             a.value, a.source, a.note = hit[0], "profile", hit[1]
@@ -267,9 +285,16 @@ def draft_unresolved(answers: list[Answer], jd_text: str, company: str, facts: d
     return answers
 
 
-def page_extras(profile: Profile) -> dict[str, str | None]:
-    """Selects the Greenhouse page shows that its API doesn't list, in fill order."""
-    return {"country": "United States", "hispanic_ethnicity": profile.eeo.hispanic_latino}
+def page_extras(profile: Profile, ats: str = "greenhouse") -> dict[str, str | None]:
+    """Fields the page shows that its API doesn't list, in fill order."""
+    if ats == "greenhouse":
+        return {"country": "United States", "hispanic_ethnicity": profile.eeo.hispanic_latino}
+    if ats == "lever" and profile.eeo.disability:
+        # Lever's voluntary disability form asks for a signature and date alongside the answer
+        from datetime import date
+        return {"eeo[disabilitySignature]": profile.name,
+                "eeo[disabilitySignatureDate]": date.today().strftime("%m/%d/%Y")}
+    return {}
 
 
 def to_json(answers: list[Answer]) -> list[dict]:
