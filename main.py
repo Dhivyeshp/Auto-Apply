@@ -93,6 +93,30 @@ def cmd_render(args: argparse.Namespace, cfg: dict) -> None:
         console.print(f"[yellow]dropped to fit 1 page:[/yellow] {', '.join(result.dropped)}")
 
 
+def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
+    from src import schemas, tailor
+
+    tcfg = cfg.get("tailor", {})
+    jd_text = Path(args.jd).read_text(encoding="utf-8")
+    with console.status("Tailoring (extract → select → rewrite → render)…"):
+        result = tailor.tailor(
+            jd_text, args.company, args.role,
+            schemas.load_profile(), schemas.load_bullets(),
+            runner=tailor.claude_runner(model=args.model or tcfg.get("model", "sonnet")),
+            max_bullets=tcfg.get("max_bullets", 15),
+            min_score=tcfg.get("min_score", 20),
+            rewrite=not args.no_rewrite,
+        )
+    a = result.analysis
+    console.print(f"[bold]{args.company} — {args.role}[/bold]  ({a.role_category})  {a.summary}")
+    console.print(f"[dim]keywords:[/dim] {', '.join(a.keywords)}")
+    console.print(f"bullets kept {len(result.kept)}, dropped to fit {len(result.dropped)}, "
+                  f"rewrites accepted {len(result.texts)}, rejected {len(result.rejected)}")
+    for bid, problems in result.rejected.items():
+        console.print(f"  [yellow]kept original {bid}:[/yellow] {'; '.join(problems)}")
+    console.print(f"[green]{result.pdf}[/green]")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="autoapply")
     parser.add_argument("--config", default=str(ROOT / "config.yaml"))
@@ -111,6 +135,14 @@ def main() -> None:
     p = sub.add_parser("render", help="render the base resume (all bullets) to a 1-page PDF")
     p.add_argument("--out", default=str(ROOT / "output" / "base"))
     p.set_defaults(func=cmd_render)
+
+    p = sub.add_parser("tailor", help="tailor a 1-page resume to a JD via headless Claude Code")
+    p.add_argument("--jd", required=True, help="path to the JD text file")
+    p.add_argument("--company", required=True)
+    p.add_argument("--role", required=True)
+    p.add_argument("--model", help="override tailor.model from config")
+    p.add_argument("--no-rewrite", action="store_true", help="select only; keep bullet text verbatim")
+    p.set_defaults(func=cmd_tailor)
 
     args = parser.parse_args()
     args.func(args, load_config(Path(args.config)))

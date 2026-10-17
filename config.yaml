@@ -33,5 +33,10 @@ sponsorship:
   exclude_no_sponsorship: false       # drop "Does Not Offer Sponsorship"
   exclude_citizenship_required: false # drop "U.S. Citizenship is Required"
 
+tailor:
+  model: sonnet       # passed to `claude -p --model`; sonnet is lighter on Pro usage limits
+  max_bullets: 15     # spec: pick top ~12-15
+  min_score: 20       # bullets scored below this are never used
+
 notify:
   enabled: false   # email/Discord ping with daily new count (not built yet)
