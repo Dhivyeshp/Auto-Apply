@@ -46,5 +46,6 @@ def test_rejects_duplicate_ids():
 
 
 def test_missing_profile_fields_reported():
-    missing = schemas.load_profile().missing_fields()
-    assert "work_authorization.requires_sponsorship" in missing
+    profile = schemas.load_profile()
+    profile.work_authorization.requires_sponsorship = None
+    assert "work_authorization.requires_sponsorship" in profile.missing_fields()

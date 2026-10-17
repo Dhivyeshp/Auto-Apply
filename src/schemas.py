@@ -106,6 +106,7 @@ class Availability(BaseModel):
 
 class EEO(BaseModel):
     gender: str | None = None
+    hispanic_latino: str | None = None  # "Yes" / "No" / "Decline To Self Identify"
     race_ethnicity: str | None = None
     veteran: str | None = None
     disability: str | None = None

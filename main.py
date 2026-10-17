@@ -162,6 +162,18 @@ def cmd_review(args: argparse.Namespace, cfg: dict) -> None:
     )
 
 
+def cmd_apply(args: argparse.Namespace, cfg: dict) -> None:
+    from src import schemas, tailor
+    from src.apply import run
+
+    runner = None if args.no_claude else tailor.claude_runner(model=cfg.get("tailor", {}).get("model", "sonnet"))
+    try:
+        run.apply_job(args.job_id, tracker.connect(ROOT / cfg["db_path"]), schemas.load_profile(),
+                      schemas.load_bullets(), runner, console=console)
+    except run.ApplyError as e:
+        raise SystemExit(str(e))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="autoapply")
     parser.add_argument("--config", default=str(ROOT / "config.yaml"))
@@ -197,6 +209,11 @@ def main() -> None:
     p = sub.add_parser("review", help="review a tailored resume: diff, coverage, approve/edit/skip")
     p.add_argument("dir", help="output/{company}_{role}_{date} folder")
     p.set_defaults(func=cmd_review)
+
+    p = sub.add_parser("apply", help="fill a Greenhouse application, review it, submit only on your say-so")
+    p.add_argument("--job-id", type=int, required=True)
+    p.add_argument("--no-claude", action="store_true", help="don't draft answers with Claude; ask for all of them")
+    p.set_defaults(func=cmd_apply)
 
     args = parser.parse_args()
     args.func(args, load_config(Path(args.config)))

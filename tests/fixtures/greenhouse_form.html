@@ -1,0 +1,54 @@
+<!doctype html>
+<html><body>
+<!-- Mimics the job-boards.greenhouse.io form structure: ids = API field names,
+     react-select comboboxes with react-select-{name}-option-N options, checkbox fieldsets. -->
+<form id="application-form" onsubmit="return false">
+  <input type="text" id="first_name">
+  <input type="text" id="last_name">
+  <input type="text" id="email">
+  <input type="text" id="country" role="combobox" class="select__input" data-options="Canada +1|United States +1|United Kingdom +44">
+  <input type="tel" id="phone">
+  <input type="text" id="candidate-location" role="combobox" class="select__input" data-options="Dallas, Texas, United States|Dallas, Georgia, United States">
+  <input type="file" id="resume">
+  <input type="text" id="question_1" role="combobox" class="select__input" data-options="Yes|No">
+  <textarea id="question_2"></textarea>
+  <fieldset id="question_3[]">
+    <label><input type="checkbox" id="question_3[]_1">Winter/Spring (January - May 2027)</label>
+    <label><input type="checkbox" id="question_3[]_2">Summer (May - September 2027)</label>
+  </fieldset>
+  <input type="text" id="gender" role="combobox" class="select__input" data-options="Decline To Self Identify|Female|Male">
+  <input type="text" id="hispanic_ethnicity" role="combobox" class="select__input" data-options="Yes|No|Decline To Self Identify">
+  <div id="race-wrap" style="display:none">
+    <input type="text" id="race" role="combobox" class="select__input" data-options="White|Asian|Decline To Self Identify">
+  </div>
+  <button type="submit" class="btn btn--pill">Submit application</button>
+</form>
+<div id="menu"></div>
+<div id="done" style="display:none">Thank you for applying.</div>
+<script>
+  const menu = document.getElementById('menu');
+  function openMenu(input) {
+    const opts = input.dataset.options.split('|').filter(o => o.toLowerCase().includes((input.value || '').toLowerCase()) || !input.value);
+    menu.innerHTML = '';
+    opts.forEach((o, i) => {
+      const d = document.createElement('div');
+      d.id = `react-select-${input.id}-option-${i}`;
+      d.setAttribute('role', 'option');
+      d.textContent = o;
+      d.onclick = () => {
+        input.value = o; input.dataset.selected = o; menu.innerHTML = '';
+        if (input.id === 'hispanic_ethnicity') document.getElementById('race-wrap').style.display = o === 'No' ? 'block' : 'none';
+      };
+      menu.appendChild(d);
+    });
+  }
+  document.querySelectorAll('[role=combobox]').forEach(el => {
+    el.addEventListener('click', () => openMenu(el));
+    el.addEventListener('input', () => openMenu(el));
+  });
+  document.querySelector('button[type=submit]').onclick = () => {
+    document.getElementById('application-form').style.display = 'none';
+    document.getElementById('done').style.display = 'block';
+  };
+</script>
+</body></html>
