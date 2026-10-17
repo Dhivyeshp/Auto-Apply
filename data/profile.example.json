@@ -1,0 +1,39 @@
+{
+  "name": "Alex Example",
+  "email": "alex@example.com",
+  "phone": "(555) 555-0100",
+  "location": "Austin, TX",
+  "links": {
+    "linkedin": "https://www.linkedin.com/in/alex-example",
+    "github": null,
+    "portfolio": null
+  },
+  "education": [
+    {
+      "school": "University of Texas at Dallas",
+      "location": "Dallas, TX",
+      "degree": "Bachelor of Science in Computer Science",
+      "graduation": "May 2027",
+      "gpa": null,
+      "coursework": ["Data Structures & Algorithms", "Operating Systems"],
+      "leadership": []
+    }
+  ],
+  "work_authorization": {
+    "authorized_us": true,
+    "requires_sponsorship": false,
+    "us_citizen": true
+  },
+  "availability": {
+    "earliest_start": "May 2027",
+    "terms": ["Summer 2027"],
+    "willing_to_relocate": true
+  },
+  "eeo": {
+    "gender": "Decline To Self Identify",
+    "hispanic_latino": "Decline To Self Identify",
+    "race_ethnicity": "Decline To Self Identify",
+    "veteran": "I don't wish to answer",
+    "disability": "I do not want to answer"
+  }
+}

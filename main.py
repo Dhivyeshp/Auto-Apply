@@ -332,6 +332,21 @@ def cmd_schedule(args: argparse.Namespace, cfg: dict) -> None:
                   f"Log: {ROOT / 'data' / 'watch.log'}   Remove: python main.py schedule --remove")
 
 
+def cmd_cloud_check(args: argparse.Namespace, cfg: dict) -> None:
+    from src import cloud
+
+    res = cloud.check(cfg, ROOT / "data" / "cloud_seen.json", cloud.env_sender(cfg),
+                      etag_file=ROOT / "data" / "listings.etag")
+    if res.status == "unchanged":
+        print("feed unchanged")
+    elif res.status == "seeded":
+        print("first run: recorded current jobs, no alerts sent")
+    else:
+        print(f"{len(res.new)} new job(s) alerted")
+    if res.errors:
+        raise SystemExit("alert errors (will retry next run): " + "; ".join(res.errors))
+
+
 def cmd_notify_test(args: argparse.Namespace, cfg: dict) -> None:
     from src import notify
 
@@ -408,6 +423,9 @@ def main() -> None:
     p.add_argument("--every", type=int, default=30, help="minutes between checks")
     p.add_argument("--remove", action="store_true", help="remove the scheduled task")
     p.set_defaults(func=cmd_schedule)
+
+    p = sub.add_parser("cloud-check", help="phone alerts for new jobs (run by GitHub Actions, no laptop needed)")
+    p.set_defaults(func=cmd_cloud_check)
 
     p = sub.add_parser("notify-test", help="send a test alert through the configured channels")
     p.set_defaults(func=cmd_notify_test)

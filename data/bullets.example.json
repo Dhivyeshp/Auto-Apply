@@ -1,0 +1,51 @@
+{
+  "experience": [
+    {
+      "id": "acme",
+      "org": "Acme Corp",
+      "title": "Software Engineering Intern",
+      "team": "Platform",
+      "location": "Austin, TX",
+      "dates": "June 2026 – Aug 2026",
+      "bullets": [
+        {
+          "id": "acme-1",
+          "text": "Built a Python service on Kubernetes handling 2M requests/day",
+          "bold": ["2M requests/day"],
+          "tags": ["backend", "infrastructure"],
+          "tech": ["Python", "Kubernetes"],
+          "has_metric": true,
+          "priority": 1
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj",
+      "name": "Example Project",
+      "tech_line": ["Python", "FastAPI"],
+      "dates": "Mar 2026",
+      "bullets": [
+        {
+          "id": "proj-1",
+          "text": "Built a FastAPI backend for an example app",
+          "bold": [],
+          "tags": ["backend"],
+          "tech": ["FastAPI"],
+          "has_metric": false,
+          "priority": 2
+        }
+      ]
+    }
+  ],
+  "leadership": [],
+  "skills": {
+    "languages": ["Python", "TypeScript"],
+    "cloud_devops": ["AWS", "Docker"]
+  },
+  "skill_labels": {
+    "languages": "Languages",
+    "cloud_devops": "Cloud & DevOps"
+  }
+}

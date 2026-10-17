@@ -6,3 +6,12 @@ data/raw/
 output/
 .pytest_cache/
 .claude/worktrees/
+
+# personal data: never pushed (see data/*.example.json for the formats)
+data/profile.json
+data/bullets.json
+data/answers.json
+data/listings.etag
+data/watch.log
+data/watch.lock
+data/cloud_seen.json

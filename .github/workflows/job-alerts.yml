@@ -1,0 +1,53 @@
+# Phone alerts for new internships, laptop on or off.
+# Needs a repo secret: NTFY_TOPIC (ntfy app) and/or DISCORD_WEBHOOK.
+name: job-alerts
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # hourly; GitHub may start it a few minutes late
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: job-alerts
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # discovery only needs these; no browser, LaTeX, or Claude in the cloud
+      - run: pip install --quiet "pydantic>=2.6" "PyYAML>=6.0" "rich>=13.0"
+
+      - name: Restore seen jobs
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/cloud_seen.json
+            data/listings.etag
+          key: seen-${{ github.run_id }}
+          restore-keys: seen-
+
+      - name: Check for new jobs
+        run: python main.py cloud-check
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Save seen jobs
+        if: always() && hashFiles('data/cloud_seen.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/cloud_seen.json
+            data/listings.etag
+          key: seen-${{ github.run_id }}

@@ -38,6 +38,17 @@ def toast(title: str, lines: list[str]) -> None:
                    env=env, capture_output=True, timeout=30, creationflags=NO_WINDOW, check=True)
 
 
+def ntfy(topic: str, title: str, message: str, click: str | None = None,
+         server: str = "https://ntfy.sh", tags: list[str] | None = None) -> None:
+    """Phone push via ntfy (JSON publish, so titles can hold any characters)."""
+    payload = {"topic": topic, "title": title, "message": message, "tags": tags or ["briefcase"]}
+    if click:
+        payload["click"] = click
+    req = urllib.request.Request(server.rstrip("/"), data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json", "User-Agent": "autoapply"})
+    urllib.request.urlopen(req, timeout=15).close()
+
+
 def discord(webhook_url: str, content: str) -> None:
     body = json.dumps({"content": content[:1900]}).encode("utf-8")
     req = urllib.request.Request(webhook_url, data=body,
@@ -54,6 +65,11 @@ def send(cfg: dict, title: str, lines: list[str]) -> list[str]:
             toast(title, lines)
         except Exception as e:
             errors.append(f"toast: {e}")
+    if ncfg.get("ntfy_topic"):
+        try:
+            ntfy(ncfg["ntfy_topic"], title, "\n".join(lines), server=ncfg.get("ntfy_server", "https://ntfy.sh"))
+        except Exception as e:
+            errors.append(f"ntfy: {e}")
     if ncfg.get("discord_webhook"):
         try:
             discord(ncfg["discord_webhook"], "**" + title + "**\n" + "\n".join(lines))

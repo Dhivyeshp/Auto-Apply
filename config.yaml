@@ -47,4 +47,5 @@ watch:
 
 notify:
   toast: true                # Windows notification
+  ntfy_topic: ""             # ntfy app topic for phone pushes (GitHub Actions uses the NTFY_TOPIC secret instead)
   discord_webhook: ""        # paste a Discord webhook URL to also get alerts on your phone
