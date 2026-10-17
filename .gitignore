@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+data/*.db
+data/raw/
+output/
+.pytest_cache/
+.claude/worktrees/
