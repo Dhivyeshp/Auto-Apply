@@ -200,6 +200,7 @@ def tailor(
     min_score: int = 20,
     rewrite: bool = True,
     coverage_threshold: float = 50.0,
+    job_id: int | None = None,
 ) -> TailorResult:
     out_dir = out_root / f"{slug(company)}_{slug(role)}_{date.today().isoformat()}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -244,6 +245,7 @@ def tailor(
     cov = ats_check.check_pdf(fit.pdf, analysis.keywords, analysis.must_have, coverage_threshold)
 
     (out_dir / "tailoring.json").write_text(json.dumps({
+        "job_id": job_id,
         "company": company,
         "role": role,
         "analysis": analysis.model_dump(),

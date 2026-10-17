@@ -90,6 +90,17 @@ def list_jobs(conn: sqlite3.Connection, status: str | None = None) -> list[dict[
     return rows
 
 
+def get_job(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:
+    row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    for col in _JSON_COLS:
+        if d.get(col):
+            d[col] = json.loads(d[col])
+    return d
+
+
 def update_status(conn: sqlite3.Connection, job_id: int, status: str, **fields: Any) -> None:
     if status not in STATUSES:
         raise ValueError(f"unknown status {status!r}; expected one of {STATUSES}")
