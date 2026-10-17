@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 from pathlib import Path
+
+# keeps child processes from flashing a console window when run from the scheduled (windowless) watcher
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def _candidate_dirs() -> list[Path]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -128,6 +129,9 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
             coverage_threshold=tcfg.get("coverage_threshold", 50),
             job_id=args.job_id,
         )
+    if job is not None:
+        tracker.set_tailored(tracker.connect(ROOT / cfg["db_path"]), job["id"], str(result.out_dir),
+                             result.rating.score if result.rating else None)
     a = result.analysis
     console.print(f"[bold]{company} — {role}[/bold]  ({a.role_category})  {a.summary}")
     console.print(f"[dim]keywords:[/dim] {', '.join(a.keywords)}")
@@ -208,7 +212,142 @@ def cmd_apply(args: argparse.Namespace, cfg: dict) -> None:
         raise SystemExit(str(e))
 
 
+def _log(msg: str) -> None:
+    line = f"{datetime.now().isoformat(timespec='seconds')}  {msg}"
+    log_path = ROOT / "data" / "watch.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def cmd_watch(args: argparse.Namespace, cfg: dict) -> None:
+    from src import notify, schemas, tailor, watch
+
+    with watch.Lock(ROOT / "data" / "watch.lock") as got_lock:
+        if not got_lock:
+            _log("previous run still going; skipped")
+            return
+        runner = None if args.no_tailor else tailor.claude_runner(model=cfg.get("tailor", {}).get("model", "sonnet"))
+        try:
+            res = watch.run_watch(cfg, tracker.connect(ROOT / cfg["db_path"]), schemas.load_profile(),
+                                  schemas.load_bullets(), runner,
+                                  notify=lambda title, lines: notify.send(cfg, title, lines), log=_log)
+        except Exception as e:
+            _log(f"watch failed: {e}")
+            raise
+    if res.unchanged:
+        console.print("Feed unchanged since the last check.")
+    elif not res.new_jobs:
+        console.print("No new matching jobs.")
+    else:
+        console.print(f"{len(res.new_jobs)} new, {len(res.tailored)} pre-tailored. Run [bold]python main.py inbox[/bold].")
+    for e in res.errors:
+        console.print(f"[yellow]{e}[/yellow]")
+
+
+def inbox_jobs(conn) -> list[dict]:
+    """Queued/drafted jobs: tailored ones by rating, then untailored applyable ones, newest first."""
+    jobs = [j for j in tracker.list_jobs(conn) if j["status"] in ("queued", "drafted")]
+    ready = sorted((j for j in jobs if j.get("tailor_dir")),
+                   key=lambda j: (j["status"] == "drafted", j.get("rating") or 0, j["preferred"]), reverse=True)
+    rest = sorted((j for j in jobs if not j.get("tailor_dir") and j["ats"] in ("greenhouse", "lever", "ashby")),
+                  key=lambda j: (j.get("discovered_at") or "", j["preferred"]), reverse=True)
+    return ready + rest
+
+
+def cmd_inbox(args: argparse.Namespace, cfg: dict) -> None:
+    conn = tracker.connect(ROOT / cfg["db_path"])
+    jobs = inbox_jobs(conn)[: args.limit or None]
+    if not jobs:
+        console.print("Inbox empty. New jobs show up here after `discover` or the scheduled watcher.")
+        return
+    table = Table(title="Inbox", show_lines=False)
+    for col, kw in [("#", {"justify": "right", "style": "dim"}), ("★", {"justify": "center"}),
+                    ("Fit", {"justify": "right"}), ("Status", {}), ("Company", {"style": "bold"}), ("Role", {}),
+                    ("ATS", {}), ("Found", {"style": "dim"})]:
+        table.add_column(col, **kw)
+    for j in jobs:
+        r = j.get("rating")
+        fit = f"[{'green' if r >= 7 else 'yellow' if r >= 5 else 'red'}]{r}/10[/]" if r else "—"
+        status = "approved" if j["status"] == "drafted" else ("ready" if j.get("tailor_dir") else "new")
+        table.add_row(str(j["id"]), "★" if j["preferred"] else "", fit, status, j["company"], j["role"],
+                      j["ats"], (j.get("discovered_at") or "")[:10])
+    console.print(table)
+    choice = input("Job # to open (blank to exit): ").strip()
+    if choice.isdigit():
+        go(int(choice), cfg)
+
+
+def go(job_id: int, cfg: dict) -> None:
+    """Tailor if needed → review → apply, for one job."""
+    from src import review, schemas, tailor, watch
+    from src.apply import run
+
+    conn = tracker.connect(ROOT / cfg["db_path"])
+    job = tracker.get_job(conn, job_id)
+    if job is None:
+        raise SystemExit(f"no job with id {job_id}")
+    if job["status"] not in ("queued", "drafted"):
+        raise SystemExit(f"job {job_id} is already {job['status']}")
+    profile, bank = schemas.load_profile(), schemas.load_bullets()
+    runner = tailor.claude_runner(model=cfg.get("tailor", {}).get("model", "sonnet"))
+
+    if job["status"] == "queued":
+        if not (job.get("tailor_dir") and (Path(job["tailor_dir"]) / "tailoring.json").exists()):
+            with console.status(f"Tailoring for {job['company']} — {job['role']}…"):
+                watch.tailor_job(conn, job, cfg, runner, profile, bank)
+            job = tracker.get_job(conn, job_id)
+        decision = review.review(Path(job["tailor_dir"]), profile, bank, conn,
+                                 threshold=cfg.get("tailor", {}).get("coverage_threshold", 50), console=console)
+        if decision != "approve":
+            return
+        if input("Fill the application now? [Y/n] ").strip().lower() == "n":
+            return
+    try:
+        run.apply_job(job_id, conn, profile, bank, runner, console=console)
+    except run.ApplyError as e:
+        raise SystemExit(str(e))
+
+
+def cmd_go(args: argparse.Namespace, cfg: dict) -> None:
+    go(args.job_id, cfg)
+
+
+TASK_NAME = "AutoApply watcher"
+
+
+def cmd_schedule(args: argparse.Namespace, cfg: dict) -> None:
+    import subprocess
+    import sys
+
+    if args.remove:
+        subprocess.run(["schtasks", "/Delete", "/TN", TASK_NAME, "/F"], check=False)
+        return
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    exe = pythonw if pythonw.exists() else Path(sys.executable)
+    action = f'"{exe}" "{ROOT / "main.py"}" watch'
+    subprocess.run(["schtasks", "/Create", "/F", "/TN", TASK_NAME, "/SC", "MINUTE", "/MO", str(args.every),
+                    "/TR", action], check=True)
+    console.print(f"Scheduled [bold]{TASK_NAME}[/bold] every {args.every} min: {action}\n"
+                  f"Log: {ROOT / 'data' / 'watch.log'}   Remove: python main.py schedule --remove")
+
+
+def cmd_notify_test(args: argparse.Namespace, cfg: dict) -> None:
+    from src import notify
+
+    errors = notify.send(cfg, "AutoApply alerts are working",
+                         ["★ Example Co — Software Engineer Intern  8/10 ready", "Open: python main.py inbox"])
+    console.print("[red]" + "\n".join(errors) + "[/red]" if errors else "Sent. You should see a notification.")
+
+
 def main() -> None:
+    import sys
+
+    if sys.stdout is None:  # running windowless (pythonw from the scheduler): send output to the log
+        log_path = ROOT / "data" / "watch.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        sys.stdout = sys.stderr = open(log_path, "a", encoding="utf-8")
+        console.file = sys.stdout
     parser = argparse.ArgumentParser(prog="autoapply")
     parser.add_argument("--config", default=str(ROOT / "config.yaml"))
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -252,6 +391,26 @@ def main() -> None:
     p.add_argument("--job-id", type=int, required=True)
     p.add_argument("--no-claude", action="store_true", help="don't draft answers with Claude; ask for all of them")
     p.set_defaults(func=cmd_apply)
+
+    p = sub.add_parser("watch", help="discover new jobs, pre-tailor applyable ones, and alert (run by the scheduler)")
+    p.add_argument("--no-tailor", action="store_true", help="alert only; don't pre-tailor")
+    p.set_defaults(func=cmd_watch)
+
+    p = sub.add_parser("inbox", help="new and ready jobs, best fit first; pick one to review and apply")
+    p.add_argument("--limit", type=int, default=30, help="rows to show (0 = all)")
+    p.set_defaults(func=cmd_inbox)
+
+    p = sub.add_parser("go", help="one job end to end: tailor if needed → review → apply")
+    p.add_argument("job_id", type=int)
+    p.set_defaults(func=cmd_go)
+
+    p = sub.add_parser("schedule", help="run `watch` automatically with Windows Task Scheduler")
+    p.add_argument("--every", type=int, default=30, help="minutes between checks")
+    p.add_argument("--remove", action="store_true", help="remove the scheduled task")
+    p.set_defaults(func=cmd_schedule)
+
+    p = sub.add_parser("notify-test", help="send a test alert through the configured channels")
+    p.set_defaults(func=cmd_notify_test)
 
     args = parser.parse_args()
     args.func(args, load_config(Path(args.config)))

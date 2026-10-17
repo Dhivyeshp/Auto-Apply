@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src import ats_check, render
 from src.schemas import BulletBank, Profile
-from src.tools import find_exe
+from src.tools import NO_WINDOW, find_exe
 
 ROOT = Path(__file__).resolve().parents[1]
 PROMPTS = ROOT / "prompts"
@@ -95,7 +95,7 @@ def claude_runner(model: str = "sonnet", timeout: int = 300) -> Runner:
         with tempfile.TemporaryDirectory() as cwd:
             proc = subprocess.run(
                 cmd, input=stdin_text, capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=timeout, cwd=cwd,
+                encoding="utf-8", errors="replace", timeout=timeout, cwd=cwd, creationflags=NO_WINDOW,
             )
         if proc.returncode != 0:
             raise RuntimeError(f"claude -p failed ({proc.returncode}): {proc.stderr[-2000:] or proc.stdout[-2000:]}")

@@ -39,5 +39,12 @@ tailor:
   min_score: 20       # bullets scored below this are never used
   coverage_threshold: 50  # flag resumes matching fewer JD keywords than this (%)
 
+watch:
+  auto_tailor: true          # pre-tailor + rate new jobs so alerts say "8/10 ready"
+  ats: [greenhouse, lever, ashby]   # only jobs the apply bot can fill get pre-tailored
+  max_tailor_per_run: 5      # each tailor = 4 Claude calls on your Pro plan
+  max_tailor_per_day: 20
+
 notify:
-  enabled: false   # email/Discord ping with daily new count (not built yet)
+  toast: true                # Windows notification
+  discord_webhook: ""        # paste a Discord webhook URL to also get alerts on your phone

@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import urllib.error
 import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -77,17 +79,31 @@ class Listing(BaseModel):
     raw: dict[str, Any] = Field(default_factory=dict)
 
 
-def fetch_listings(urls: list[str], timeout: int = 60) -> list[dict[str, Any]]:
+def fetch_listings(urls: list[str], timeout: int = 60, etag_file: Path | None = None) -> list[dict[str, Any]] | None:
+    """Fetch the first working source. With `etag_file`, returns None when the feed hasn't changed."""
+    etags = json.loads(etag_file.read_text(encoding="utf-8")) if etag_file and etag_file.exists() else {}
     errors = []
     for url in urls:
+        headers = {"User-Agent": "autoapply-discovery"}
+        if etag_file and etags.get(url):
+            headers["If-None-Match"] = etags[url]
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "autoapply-discovery"})
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+                etag = resp.headers.get("ETag")
+        except urllib.error.HTTPError as e:
+            if e.code == 304:
+                return None
+            errors.append(f"{url}: {e}")
+            continue
         except Exception as e:  # try the next source
             errors.append(f"{url}: {e}")
             continue
         _check_schema(data, url)
+        if etag_file and etag:
+            etag_file.parent.mkdir(parents=True, exist_ok=True)
+            etag_file.write_text(json.dumps({**etags, url: etag}), encoding="utf-8")
         return data
     raise RuntimeError("could not fetch listings from any source:\n  " + "\n  ".join(errors))
 
@@ -209,9 +225,12 @@ def run(
     conn: sqlite3.Connection | None,
     dry_run: bool = False,
     listings: list[dict[str, Any]] | None = None,
+    etag_file: Path | None = None,
 ) -> dict[str, Any]:
     """Fetch, filter, and queue. Returns stats plus the kept/new jobs."""
-    raw_listings = listings if listings is not None else fetch_listings(cfg["source"]["urls"])
+    raw_listings = listings if listings is not None else fetch_listings(cfg["source"]["urls"], etag_file=etag_file)
+    if raw_listings is None:  # feed unchanged since the last fetch
+        return {"total": 0, "kept": 0, "new": 0, "drops": {}, "kept_jobs": [], "new_jobs": [], "unchanged": True}
     drops: Counter[str] = Counter()
     kept: list[dict[str, Any]] = []
     new: list[dict[str, Any]] = []

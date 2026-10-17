@@ -32,10 +32,16 @@ CREATE TABLE IF NOT EXISTS jobs (
     resume_path   TEXT,
     coverage_pct  REAL,
     notes         TEXT,
-    raw_json      TEXT           -- original listing, kept in case the schema changes
+    raw_json      TEXT,          -- original listing, kept in case the schema changes
+    tailor_dir    TEXT,          -- output folder of the latest tailoring run
+    tailored_at   TEXT,
+    rating        INTEGER        -- Claude's 1-10 fit rating of that resume
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 """
+
+# columns added after the first release; init_db adds any an older database lacks
+_MIGRATIONS = {"tailor_dir": "TEXT", "tailored_at": "TEXT", "rating": "INTEGER"}
 
 _JSON_COLS = ("terms", "locations", "degrees")
 _UPDATABLE = {"date_applied", "resume_path", "coverage_pct", "notes"}
@@ -53,6 +59,10 @@ def connect(path: str | Path) -> sqlite3.Connection:
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    have = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+    for col, typ in _MIGRATIONS.items():
+        if col not in have:
+            conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {typ}")
     conn.commit()
 
 
@@ -80,18 +90,10 @@ def list_jobs(conn: sqlite3.Connection, status: str | None = None) -> list[dict[
         sql += " WHERE status = ?"
         args = (status,)
     sql += " ORDER BY preferred DESC, date_posted DESC"
-    rows = []
-    for r in conn.execute(sql, args):
-        d = dict(r)
-        for col in _JSON_COLS:
-            if d.get(col):
-                d[col] = json.loads(d[col])
-        rows.append(d)
-    return rows
+    return [_decode(r) for r in conn.execute(sql, args)]
 
 
-def get_job(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:
-    row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+def _decode(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     d = dict(row)
@@ -99,6 +101,26 @@ def get_job(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:
         if d.get(col):
             d[col] = json.loads(d[col])
     return d
+
+
+def get_job(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:
+    return _decode(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
+
+
+def get_job_by_listing(conn: sqlite3.Connection, listing_id: str) -> dict[str, Any] | None:
+    return _decode(conn.execute("SELECT * FROM jobs WHERE listing_id = ?", (listing_id,)).fetchone())
+
+
+def set_tailored(conn: sqlite3.Connection, job_id: int, tailor_dir: str, rating: int | None) -> None:
+    conn.execute(
+        "UPDATE jobs SET tailor_dir = ?, tailored_at = ?, rating = ? WHERE id = ?",
+        (tailor_dir, datetime.now(timezone.utc).isoformat(timespec="seconds"), rating, job_id),
+    )
+    conn.commit()
+
+
+def count_tailored_since(conn: sqlite3.Connection, since_iso: str) -> int:
+    return conn.execute("SELECT COUNT(*) FROM jobs WHERE tailored_at >= ?", (since_iso,)).fetchone()[0]
 
 
 def update_status(conn: sqlite3.Connection, job_id: int, status: str, **fields: Any) -> None:

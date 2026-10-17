@@ -11,7 +11,7 @@ import jinja2
 import pdfplumber
 
 from src.schemas import Bullet, BulletBank, Profile
-from src.tools import find_exe
+from src.tools import NO_WINDOW, find_exe
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = ROOT / "templates"
@@ -156,7 +156,8 @@ def compile_pdf(tex_source: str, out_dir: Path, name: str = "resume") -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     tex = out_dir / f"{name}.tex"
     tex.write_text(tex_source, encoding="utf-8")
-    proc = subprocess.run(_latex_cmd(tex, out_dir), capture_output=True, text=True, encoding="utf-8", errors="replace")
+    proc = subprocess.run(_latex_cmd(tex, out_dir), capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", creationflags=NO_WINDOW)
     pdf = out_dir / f"{name}.pdf"
     if proc.returncode != 0 or not pdf.exists():
         raise RuntimeError(f"LaTeX compile failed:\n{proc.stdout[-3000:]}\n{proc.stderr[-3000:]}")
