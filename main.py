@@ -142,6 +142,8 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
             job_id=args.job_id,
             pdf_name=tcfg.get("pdf_name"),
             pdf_types=tcfg.get("pdf_types"),
+            target_rating=tcfg.get("target_rating"),
+            improve_rounds=tcfg.get("improve_rounds", 2),
         )
     if job is not None:
         from src.watch import copy_to_sync_dir
@@ -337,6 +339,28 @@ def cmd_go(args: argparse.Namespace, cfg: dict) -> None:
     go(args.job_id, cfg)
 
 
+def cmd_batch(args: argparse.Namespace, cfg: dict) -> None:
+    from src import batch, schemas, tailor
+
+    bcfg = cfg.get("batch", {})
+    db_path = ROOT / cfg["db_path"]
+    conn = tracker.connect(db_path)
+    jobs = batch.select_jobs(conn, inbox_jobs(conn), args.ids, args.top or bcfg.get("top", 8))
+    if not jobs:
+        raise SystemExit("Nothing to do: no queued/approved Greenhouse, Lever or Ashby jobs selected.")
+    console.print(f"Batch of {len(jobs)}: " + ", ".join(f"#{j['id']} {j['company']}" for j in jobs))
+    min_rating = args.min_rating if args.min_rating is not None else bcfg.get("min_rating", 0)
+    res = batch.run_batch(
+        conn, db_path, jobs, cfg, schemas.load_profile(), schemas.load_bullets(),
+        tailor.claude_runner(model=cfg.get("tailor", {}).get("model", "sonnet")), console,
+        workers=args.parallel or bcfg.get("parallel", 3), min_rating=min_rating,
+    )
+    console.print(batch.summary(conn, res))
+    if res.below_cutoff:
+        console.print(f"[dim]{len(res.below_cutoff)} below {min_rating}/10 were left in the inbox; "
+                      f"`python main.py go <id>` still works for any of them.[/dim]")
+
+
 TASK_NAME = "AutoApply watcher"
 
 
@@ -442,6 +466,13 @@ def main() -> None:
     p = sub.add_parser("go", help="one job end to end: tailor if needed → review → apply")
     p.add_argument("job_id", type=int)
     p.set_defaults(func=cmd_go)
+
+    p = sub.add_parser("batch", help="tailor several jobs in parallel, review them, fill all forms, submit each")
+    p.add_argument("ids", type=int, nargs="*", help="job ids (default: top of the inbox)")
+    p.add_argument("--top", type=int, help="how many inbox jobs when no ids are given (config batch.top)")
+    p.add_argument("--parallel", type=int, help="tailor/prepare this many at once (config batch.parallel)")
+    p.add_argument("--min-rating", type=int, help="skip resumes rated below this (config batch.min_rating)")
+    p.set_defaults(func=cmd_batch)
 
     p = sub.add_parser("schedule", help="run `watch` automatically with Windows Task Scheduler")
     p.add_argument("--every", type=int, default=30, help="minutes between checks")

@@ -46,6 +46,8 @@ tailor:
   max_bullets: 15     # spec: pick top ~12-15
   min_score: 20       # bullets scored below this are never used
   coverage_threshold: 50  # flag resumes matching fewer JD keywords than this (%)
+  target_rating: 9          # below this, Claude reworks the resume from your real bullets and re-rates
+  improve_rounds: 2         # max rework rounds per job (each = 2 Claude calls); best version wins
   pdf_name: Dhivyesh_Resume_{type}  # file name employers see; {type} comes from the job's category below
   pdf_types:                 # job category (from the JD) → {type}
     swe: SWE
@@ -54,6 +56,11 @@ tailor:
     hardware: SWE
     ml: ML
     data: ML
+
+batch:
+  parallel: 3               # resumes tailored / forms prepared at once (Claude Pro rate limits)
+  top: 8                    # jobs per batch when you don't list ids
+  min_rating: 7             # skip resumes Claude rates below this (after improvement rounds)
 
 watch:
   auto_tailor: true          # pre-tailor + rate new jobs so alerts say "8/10 ready"
