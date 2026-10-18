@@ -41,6 +41,7 @@ def tailor_job(conn: sqlite3.Connection, job: dict, cfg: dict, runner, profile: 
         min_score=tcfg.get("min_score", 20),
         coverage_threshold=tcfg.get("coverage_threshold", 50),
         job_id=job["id"],
+        pdf_name=tcfg.get("pdf_name"),
     )
     rating = result.rating.score if result.rating else None
     tracker.set_tailored(conn, job["id"], str(result.out_dir), rating)

@@ -46,6 +46,7 @@ tailor:
   max_bullets: 15     # spec: pick top ~12-15
   min_score: 20       # bullets scored below this are never used
   coverage_threshold: 50  # flag resumes matching fewer JD keywords than this (%)
+  pdf_name: Dhivyesh_Resume_SWE  # file name employers see when the resume is uploaded
 
 watch:
   auto_tailor: true          # pre-tailor + rate new jobs so alerts say "8/10 ready"

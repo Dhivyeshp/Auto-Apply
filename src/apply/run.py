@@ -33,7 +33,11 @@ def approved_resume(job: dict) -> tuple[Path, dict]:
     approved = record.get("approved") or {}
     if not pdf.exists() or approved.get("sha256") != sha256(pdf):
         raise ApplyError(f"{pdf} isn't the approved version anymore; run review again")
-    return pdf, record
+    # upload the named copy (e.g. Dhivyesh_Resume_SWE.pdf) only if it's byte-identical to what was approved
+    upload = Path(approved.get("upload_path") or pdf)
+    if not upload.exists() or sha256(upload) != approved["sha256"]:
+        upload = pdf
+    return upload, record
 
 
 def ask_human(answers: list[plan.Answer], ask: Callable[[str], str], console: Console) -> None:

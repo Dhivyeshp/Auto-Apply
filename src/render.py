@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -162,6 +163,15 @@ def compile_pdf(tex_source: str, out_dir: Path, name: str = "resume") -> Path:
     if proc.returncode != 0 or not pdf.exists():
         raise RuntimeError(f"LaTeX compile failed:\n{proc.stdout[-3000:]}\n{proc.stderr[-3000:]}")
     return pdf
+
+
+def named_copy(pdf: Path, name: str | None) -> Path:
+    """Copy resume.pdf to <name>.pdf beside it (the file employers see); returns the path to upload."""
+    if not name:
+        return pdf
+    dest = pdf.with_name(f"{name}.pdf")
+    shutil.copyfile(pdf, dest)
+    return dest
 
 
 def page_count(pdf: Path) -> int:

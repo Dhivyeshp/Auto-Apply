@@ -133,3 +133,19 @@ def test_edit_rerenders_then_approve(tailored, bank):
     assert record["rating_stale"] is True  # rating describes the pre-edit resume
     assert record["approved"]["sha256"] == review.sha256(out / "resume.pdf")
     assert IBM1.split()[0] in render.escape_latex((out / "resume.tex").read_text(encoding="utf-8"))
+
+
+@needs_latex
+def test_approve_creates_named_copy_used_for_upload(tailored, bank):
+    from src.apply.run import approved_resume
+
+    out, profile, conn = tailored
+    review.review(out, profile, bank, conn, ask=scripted("a"), console=quiet(), pdf_name="Dhivyesh_Resume_SWE")
+    named = out / "Dhivyesh_Resume_SWE.pdf"
+    assert named.read_bytes() == (out / "resume.pdf").read_bytes()
+    upload, _ = approved_resume(tracker.get_job(conn, 1))
+    assert upload == named
+    # a stale named copy (edited after approval) is never uploaded
+    named.write_bytes(b"something else")
+    upload, _ = approved_resume(tracker.get_job(conn, 1))
+    assert upload.name == "resume.pdf"

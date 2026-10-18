@@ -132,13 +132,16 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def decide(out_dir: Path, record: dict, decision: str, conn: sqlite3.Connection | None) -> None:
+def decide(out_dir: Path, record: dict, decision: str, conn: sqlite3.Connection | None,
+           pdf_name: str | None = None) -> None:
     """Record approve/skip in tailoring.json and, if linked to a job, in the tracker."""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     pdf = out_dir / "resume.pdf"
     cov = record.get("ats", {}).get("coverage_pct")
     if decision == "approve":
-        record["approved"] = {"at": now, "resume_path": str(pdf), "sha256": sha256(pdf), "coverage_pct": cov}
+        upload = render.named_copy(pdf, pdf_name)  # refreshed so the named file is exactly what was approved
+        record["approved"] = {"at": now, "resume_path": str(pdf), "upload_path": str(upload),
+                              "sha256": sha256(pdf), "coverage_pct": cov}
         record.pop("skipped", None)
     else:
         record["skipped"] = {"at": now}
@@ -195,6 +198,7 @@ def review(
     threshold: float = 50.0,
     ask: Callable[[str], str] = input,
     console: Console | None = None,
+    pdf_name: str | None = None,
 ) -> str:
     """Interactive loop. Returns 'approve', 'skip' or 'quit'."""
     console = console or Console()
@@ -206,8 +210,8 @@ def review(
         console.print(HELP)
         choice = ask("> ").strip().lower()
         if choice == "a":
-            decide(out_dir, record, "approve", conn)
-            console.print(f"[green]approved[/green] {out_dir / 'resume.pdf'}")
+            decide(out_dir, record, "approve", conn, pdf_name)
+            console.print(f"[green]approved[/green] {record['approved']['upload_path']}")
             return "approve"
         if choice == "s":
             decide(out_dir, record, "skip", conn)

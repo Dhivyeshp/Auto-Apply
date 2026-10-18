@@ -216,6 +216,7 @@ def tailor(
     coverage_threshold: float = 50.0,
     job_id: int | None = None,
     with_rating: bool = True,
+    pdf_name: str | None = None,
 ) -> TailorResult:
     out_dir = out_root / f"{slug(company)}_{slug(role)}_{date.today().isoformat()}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -257,6 +258,7 @@ def tailor(
                 texts[rw.id] = new
 
     fit = render.fit_one_page(profile, bank, ranked, out_dir, texts=texts)
+    render.named_copy(fit.pdf, pdf_name)
     cov = ats_check.check_pdf(fit.pdf, analysis.keywords, analysis.must_have, coverage_threshold)
     rating = rate(runner, jd_text, fit.pdf) if with_rating else None
 
