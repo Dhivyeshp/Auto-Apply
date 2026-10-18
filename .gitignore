@@ -16,3 +16,4 @@ data/watch.log
 data/watch.lock
 data/cloud_seen.json
 config.local.yaml
+data/*.db-*

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% set nav = "chat" %}
+{% block title %}Fix the app — AutoApply{% endblock %}
+{% block body %}
+<div class="panel">
+  <h1>Fix the app</h1>
+  <p class="muted">Describe a problem or a change ("the filter is dropping X", "show location in the inbox"). Claude Code edits this project,
+    runs the tests, and lists the files it changed. It can't commit, push, apply to jobs, or touch your profile unless you ask.
+    Restart <code>python main.py ui</code> after code changes to load them.</p>
+</div>
+<div class="panel">
+  <div class="chat" id="chat" style="max-height:60vh"></div>
+  <div class="row" style="margin-top:10px">
+    <textarea id="msg" class="grow" placeholder="What should Claude fix or change?" onkeydown="if(event.key==='Enter' && (event.ctrlKey||event.metaKey)) send()"></textarea>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button class="primary" id="send" onclick="send()">Send (Ctrl+Enter)</button>
+    <button onclick="reset()">New conversation</button>
+    <span class="muted" id="status"></span>
+  </div>
+</div>
+<script>
+let shown = -1;
+function draw(state) {
+  const box = document.getElementById("chat");
+  if (state.turns.length !== shown) {
+    box.innerHTML = state.turns.map((t, k) => `<div class="msg ${t.role}">${esc(t.text)}${t.files && t.files.length ?
+      `<div class="files">Changed: ${t.files.map(esc).join(", ")} · <a href="#" onclick="undo(${k}); return false">Undo these</a></div>` : ""}</div>`).join("")
+      || '<div class="muted">No messages yet.</div>';
+    box.scrollTop = box.scrollHeight;
+    shown = state.turns.length;
+    window._turns = state.turns;
+  }
+  document.getElementById("send").disabled = state.busy;
+  document.getElementById("status").innerHTML = state.busy ? '<span class="spin"></span> Claude is working… (can take a few minutes)' : "";
+}
+async function refresh() { draw(await api("/api/chat")); return false; }
+async function send() {
+  const el = document.getElementById("msg"); const text = el.value.trim(); if (!text) return;
+  el.value = "";
+  try { await api("/api/chat", { message: text }); } catch (e) { alert(e.message); }
+  refresh();
+}
+async function undo(k) { await api("/api/chat/undo", { files: window._turns[k].files }); refresh(); }
+async function reset() { await api("/api/chat/reset", {}); shown = -1; refresh(); }
+poll(refresh, 2000);
+</script>
+{% endblock %}

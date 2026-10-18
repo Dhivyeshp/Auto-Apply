@@ -63,8 +63,11 @@ def connect(path: str | Path) -> sqlite3.Connection:
     path = Path(path)
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=10)
     conn.row_factory = sqlite3.Row
+    if str(path) != ":memory:":
+        # the website, the watcher, and batch workers all use this file at once
+        conn.execute("PRAGMA journal_mode=WAL")
     init_db(conn)
     return conn
 

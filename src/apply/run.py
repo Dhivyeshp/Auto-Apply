@@ -183,22 +183,37 @@ def review_and_submit(page, prep: Prepared, fills: dict, shot: Path, conn: sqlit
             continue
         console.print(f"[red]unknown choice {choice!r}[/red] (type the word submit to submit)")
 
-    confirmed = common.submit(page, wait_for_human=lambda msg: ask(msg + " "))
+    def unclear(conf: Path) -> bool:
+        console.print(f"[yellow]Didn't see a confirmation message. Check the browser and {conf}.[/yellow]")
+        return ask("Did the application go through? [y/N] ").strip().lower() == "y"
+
+    outcome = submit_and_log(page, prep, conn, wait_for_human=lambda msg: ask(msg + " "), confirm_unclear=unclear)
+    if outcome == "submitted":
+        console.print(f"[green]Submitted.[/green] Logged with resume {prep.pdf.name} "
+                      f"(sha256 {log['resume_sha256'][:12]}…)")
+        return "submitted"
+    console.print("[red]Not marked as submitted. The job stays 'drafted'.[/red]")
+    return "quit"
+
+
+def submit_and_log(page, prep: Prepared, conn: sqlite3.Connection, wait_for_human: Callable[[str], object],
+                   confirm_unclear: Callable[[Path], bool]) -> str:
+    """Click submit (you already approved), confirm, and log. Returns 'submitted' or 'unconfirmed'."""
+    from src.apply import common
+
+    log, out_dir = prep.log, prep.out_dir
+    confirmed = common.submit(page, wait_for_human=wait_for_human)
     conf = common.screenshot(page, out_dir / "confirmation.png")
     if not confirmed:
-        console.print(f"[yellow]Didn't see a confirmation message. Check the browser and {conf}.[/yellow]")
-        confirmed = ask("Did the application go through? [y/N] ").strip().lower() == "y"
+        confirmed = confirm_unclear(conf)
     if not confirmed:
         log["submit_unconfirmed_at"] = _now()
         save_apply(out_dir, log)
-        console.print("[red]Not marked as submitted. The job stays 'drafted'.[/red]")
-        return "quit"
+        return "unconfirmed"
     log["submitted_at"] = _now()
     save_apply(out_dir, log)
-    tracker.update_status(conn, job["id"], "submitted", date_applied=date.today().isoformat(),
+    tracker.update_status(conn, prep.job["id"], "submitted", date_applied=date.today().isoformat(),
                           notes=f"confirmation: {conf}")
-    console.print(f"[green]Submitted.[/green] Logged with resume {prep.pdf.name} "
-                  f"(sha256 {log['resume_sha256'][:12]}…)")
     return "submitted"
 
 

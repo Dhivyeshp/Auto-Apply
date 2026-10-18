@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% set nav = "inbox" %}
+{% block title %}{{ job.company }} — AutoApply{% endblock %}
+{% block body %}
+<div class="panel">
+  <div class="row">
+    <div class="grow">
+      <h1>{{ job.company }} — {{ job.role }}</h1>
+      <div class="muted">{{ (job.locations or [])|join(" · ") }} · {{ job.ats }} · posted {{ job.date_posted or "?" }} · <a href="{{ job.url }}" target="_blank" rel="noopener">job posting ↗</a></div>
+    </div>
+    {% set st = {"queued": ("Not approved", "dim"), "drafted": ("Approved", "good"), "submitted": ("Submitted", "good"), "skipped": ("Skipped", "warn"), "interview": ("Interview", "good"), "offer": ("Offer", "good"), "rejected": ("Rejected", "bad")}[job.status] %}
+    <span class="pill {{ st[1] }}">{{ st[0] }}</span>
+  </div>
+</div>
+
+{% if not record %}
+  <div class="panel" id="tailorPanel">
+    {% if task and task.status in ("queued", "running") %}
+      <p><span class="spin"></span> Tailoring and rating… this takes 1–3 minutes.</p>
+    {% elif task and task.status == "error" %}
+      <div class="banner bad">Tailoring failed: {{ task.error }}</div>
+      <button class="primary" onclick="tailor()">Try again</button>
+    {% else %}
+      <p>No tailored resume yet.</p>
+      <button class="primary" onclick="tailor()">Tailor resume</button>
+    {% endif %}
+  </div>
+{% else %}
+{% set r = record.rating %}
+<div class="split">
+  <div>
+    <div class="panel">
+      <div class="row" style="align-items:flex-start">
+        {% if r %}
+          <div style="text-align:center; min-width:70px">
+            <div class="score {{ 'good' if r.score >= 7 else ('warn' if r.score >= 5 else 'bad') }}">{{ r.score }}</div>
+            <div class="muted">/ 10</div>
+          </div>
+          <div class="grow">
+            <div><strong>{{ r.verdict }}</strong></div>
+            {% if record.rating_stale %}<div class="banner warn" style="margin:6px 0">This rating is from before your edits. <a href="#" onclick="rate(); return false">Re-rate</a></div>{% endif %}
+            <ul class="plain">
+              {% for s in r.strengths %}<li><span style="color:var(--good)">+</span> {{ s }}</li>{% endfor %}
+              {% for g in r.gaps %}<li><span style="color:var(--bad)">−</span> {{ g }}</li>{% endfor %}
+            </ul>
+            {% if record.attempts and record.attempts|length > 1 %}
+              <div class="muted" style="margin-top:6px">Improvement rounds: {% for a in record.attempts %}{{ a.score }}{% if not loop.last %} → {% endif %}{% endfor %} (kept round {{ record.best_round }})</div>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="grow">Not rated yet. <button onclick="rate()">Rate</button></div>
+        {% endif %}
+      </div>
+      {% set cov = record.ats %}
+      <div style="margin-top:12px" class="muted">
+        ATS keyword coverage <strong style="color:var({{ '--bad' if cov.below_threshold else '--good' }})">{{ cov.coverage_pct }}%</strong>,
+        must-haves {{ cov.must_have_pct }}%
+        {% if cov.missing %}<br>Missing: {{ cov.missing|join(", ") }}{% endif %}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        {% if job.status == "queued" %}
+          <button class="good" onclick="decide('approve')">Approve resume</button>
+          <button onclick="decide('skip')">Skip job</button>
+        {% elif job.status == "drafted" %}
+          {% if supported %}<a class="btn primary" href="/job/{{ job.id }}/apply">Apply →</a>{% else %}
+            <span class="muted">The bot can't fill {{ job.ats }} forms. Download the resume and apply on the site.</span>{% endif %}
+          <button onclick="decide('skip')">Skip job</button>
+        {% elif job.status == "submitted" %}
+          <span class="muted">Applied {{ job.date_applied }}.</span>
+          <select onchange="setStatus(this.value)"><option>Update status…</option><option value="interview">Interview</option><option value="rejected">Rejected</option><option value="offer">Offer</option></select>
+        {% elif job.status == "skipped" %}
+          <button onclick="setStatus('queued')">Un-skip</button>
+        {% endif %}
+        <span class="grow"></span>
+        <a class="btn" href="/job/{{ job.id }}/file/resume.pdf" download="{{ record.pdf_name or 'resume' }}.pdf">Download PDF</a>
+        <button onclick="tailor()" title="Start over from the job description">Re-tailor</button>
+      </div>
+      <div id="msg" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Chat about this resume</h2>
+      <div class="chat" id="chat">
+        {% for m in chat %}<div class="msg {{ m.role }}">{{ m.text }}</div>{% else %}
+        <div class="muted">e.g. "lead with the IBM monitoring work", "drop MonteCore", "use 'built' instead of 'engineered'". It only uses your real bullets.</div>{% endfor %}
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="chatIn" class="grow" placeholder="Tell Claude what to change…" onkeydown="if(event.key==='Enter') sendChat()">
+        <button class="primary" id="chatBtn" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row"><h2 class="grow">Bullets</h2><button id="rerender" onclick="rerender()" disabled>Re-render with selection</button></div>
+      {% for row in rows %}
+        {% if loop.first or row.entry != rows[loop.index0 - 1].entry %}<div class="muted" style="margin-top:10px"><strong>{{ row.entry }}</strong></div>{% endif %}
+        <div class="bullet {{ 'out' if row.state != 'kept' else '' }}">
+          <input type="checkbox" class="keep" value="{{ row.id }}" {{ 'checked' if row.state == 'kept' }} onchange="document.getElementById('rerender').disabled=false">
+          <div class="grow">
+            <div class="txt">{% if row.rewritten %}{% for op, t in row.diff %}{% if op == 'eq' %}{{ t }} {% elif op == 'del' %}<del>{{ t }}</del> {% else %}<ins>{{ t }}</ins> {% endif %}{% endfor %}{% else %}{{ row.text }}{% endif %}</div>
+            <div class="meta">{{ row.id }}{% if row.score is not none %} · relevance {{ row.score }}{% endif %}{% if row.reason %} · {{ row.reason }}{% endif %}{% if row.state == 'dropped' %} · dropped to fit 1 page{% endif %}</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <iframe class="pdf" id="pdf" src="/job/{{ job.id }}/file/resume.pdf#view=FitH"></iframe>
+  </div>
+</div>
+{% endif %}
+
+<script>
+const JOB = {{ job.id }};
+function say(t) { const m = document.getElementById("msg"); if (m) m.textContent = t; }
+async function tailor() {
+  if ({{ 'true' if record else 'false' }} && !confirm("Re-tailor from scratch? Your edits to this resume will be replaced.")) return;
+  await api("/api/jobs/tailor", { ids: [JOB] });
+  waitTask("Tailoring and rating… 1–3 minutes.");
+}
+async function rate() { await api(`/api/jobs/${JOB}/rate`, {}); waitTask("Claude is rating the resume…"); }
+function waitTask(text) {
+  const p = document.getElementById("tailorPanel");
+  if (p) p.innerHTML = `<p><span class="spin"></span> ${esc(text)}</p>`; else say(text);
+  poll(async () => {
+    const t = await api(`/api/jobs/${JOB}/task`);
+    if (t.status === "done") { location.reload(); return true; }
+    if (t.status === "error") { say("Failed: " + t.error); if (p) p.innerHTML = `<div class="banner bad">${esc(t.error)}</div>`; return true; }
+    return false;
+  }, 3000);
+}
+async function decide(d) {
+  say(d === "approve" ? "Approving…" : "Skipping…");
+  await api(`/api/jobs/${JOB}/decide`, { decision: d });
+  location.reload();
+}
+async function setStatus(s) { await api(`/api/jobs/${JOB}/status`, { status: s }); location.reload(); }
+async function rerender() {
+  const keep = [...document.querySelectorAll(".keep:checked")].map(c => c.value);
+  say("Re-rendering…");
+  try { await api(`/api/jobs/${JOB}/edit`, { keep }); location.reload(); } catch (e) { say(e.message); }
+}
+async function sendChat() {
+  const input = document.getElementById("chatIn"), btn = document.getElementById("chatBtn"), box = document.getElementById("chat");
+  const text = input.value.trim(); if (!text) return;
+  if (box.querySelector(".muted")) box.innerHTML = "";
+  box.insertAdjacentHTML("beforeend", `<div class="msg you">${esc(text)}</div><div class="msg claude" id="pending"><span class="spin"></span> thinking…</div>`);
+  box.scrollTop = box.scrollHeight; input.value = ""; btn.disabled = true;
+  try {
+    const r = await api(`/api/jobs/${JOB}/chat`, { message: text });
+    document.getElementById("pending").outerHTML = `<div class="msg claude">${esc(r.reply)}</div>`;
+    if (r.changed) setTimeout(() => location.reload(), 1200);
+  } catch (e) {
+    document.getElementById("pending").outerHTML = `<div class="msg claude">Error: ${esc(e.message)}</div>`;
+  }
+  btn.disabled = false;
+}
+{% if task and task.status in ("queued", "running") %}waitTask("Working…");{% endif %}
+</script>
+{% endblock %}

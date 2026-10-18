@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% set nav = "inbox" %}
+{% block title %}Apply: {{ job.company }} — AutoApply{% endblock %}
+{% block body %}
+<div class="panel">
+  <h1>Apply: {{ job.company }} — {{ job.role }}</h1>
+  <div class="muted"><a href="/job/{{ job.id }}">← back to the resume</a> · <a href="{{ job.url }}" target="_blank" rel="noopener">job posting ↗</a></div>
+</div>
+<div id="view" class="panel"><span class="spin"></span> Loading…</div>
+
+<script>
+const JOB = {{ job.id }};
+let lastState = null, editing = false;
+
+function sourceLabel(s) { return { profile: "profile", rule: "rule", saved: "saved", claude: "Claude draft", you: "you", skip: "skipped" }[s] || s; }
+
+function input(a, id) {
+  const v = a.value;
+  if (a.type === "select" && a.options.length) {
+    return `<select id="${id}"><option value="">— choose —</option>${a.options.map(o => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  }
+  if (a.type === "multiselect") {
+    const vals = Array.isArray(v) ? v : (v ? [v] : []);
+    return `<div id="${id}">${a.options.map(o => `<label style="display:block"><input type="checkbox" value="${esc(o)}" ${vals.includes(o) ? "checked" : ""}> ${esc(o)}</label>`).join("")}</div>`;
+  }
+  if (a.type === "textarea") return `<textarea id="${id}">${esc(v || "")}</textarea>`;
+  return `<input type="text" id="${id}" value="${esc(v || "")}" style="width:100%">`;
+}
+
+function readInput(a, id) {
+  const el = document.getElementById(id);
+  if (a.type === "multiselect") return [...el.querySelectorAll("input:checked")].map(c => c.value);
+  return el.value;
+}
+
+function render(s) {
+  const v = document.getElementById("view");
+  const msg = s.message ? `<div class="banner info">${esc(s.message)}</div>` : "";
+  if (s.state === "none") {
+    v.innerHTML = `<p>Start filling this application. Chrome will open and fill the form; nothing is submitted until you click Submit here.</p>
+      <button class="primary" onclick="start()">Start</button>`;
+  } else if (["preparing", "filling", "submitting"].includes(s.state)) {
+    v.innerHTML = `<p><span class="spin"></span> ${esc(s.message || s.state)}</p>`;
+  } else if (s.state === "questions") {
+    const need = s.answers.filter(a => s.needs_answers.includes(a.name));
+    v.innerHTML = msg + need.map((a, k) => `
+      <div style="margin-bottom:14px">
+        <div><strong>${esc(a.label)}</strong> ${a.note ? `<span class="muted">(${esc(a.note)})</span>` : ""}</div>
+        ${input(a, "q" + k)}
+        <label class="muted"><input type="checkbox" id="r${k}"> remember this answer for this question</label>
+      </div>`).join("") +
+      `<div class="muted" style="margin-bottom:8px">Leave anything blank to fill it yourself in Chrome.</div>
+       <button class="primary" onclick="sendAnswers()">Continue</button> <button onclick="act('close')">Cancel</button>`;
+    window._need = need;
+  } else if (s.state === "review") {
+    if (editing) return;
+    v.innerHTML = msg + `
+      <div class="tablewrap"><table><thead><tr><th>Question</th><th>Answer</th><th>From</th><th>Filled</th><th></th></tr></thead><tbody>
+      ${s.answers.filter(a => a.source !== "skip").map(a => `<tr>
+        <td>${a.required ? "<strong>*</strong> " : ""}${esc(a.label)}</td>
+        <td style="max-width:420px">${esc(Array.isArray(a.value) ? a.value.join(", ") : (a.value ?? ""))}</td>
+        <td><span class="src ${a.source}">${sourceLabel(a.source)}</span></td>
+        <td>${a.filled === true ? '<span class="pill good">✓</span>' : a.filled === false ? `<span class="pill bad" title="${esc(a.fill_error)}">✗</span>` : '<span class="muted">—</span>'}</td>
+        <td><button onclick="editRow(${a.i})">Change</button></td>
+      </tr><tr id="edit${a.i}" style="display:none"><td colspan="5">${input(a, "e" + a.i)} <button class="primary" onclick="saveRow(${a.i})">Save &amp; refill</button></td></tr>`).join("")}
+      </tbody></table></div>
+      <p class="muted">Yellow rows were drafted by Claude: read them. Resume uploaded as <strong>${esc(s.resume)}</strong>.
+        ${s.screenshot ? `<a href="/job/${JOB}/file/form.png" target="_blank">Form screenshot ↗</a>` : ""}</p>
+      <label><input type="checkbox" id="checked" onchange="document.getElementById('submitBtn').disabled=!this.checked"> I checked the form in Chrome</label>
+      <div class="row" style="margin-top:10px">
+        <button class="good" id="submitBtn" disabled onclick="submitApp()">Submit application</button>
+        <button onclick="act('skip')">Skip this job</button>
+        <button onclick="act('close')">Close (decide later)</button>
+      </div>`;
+    window._answers = s.answers;
+  } else if (s.state === "needs_human") {
+    v.innerHTML = `<div class="banner warn">${esc(s.message)}</div><button class="primary" onclick="act('continue')">Done, continue</button>`;
+  } else if (s.state === "unclear") {
+    v.innerHTML = `<div class="banner warn">${esc(s.message)}</div>
+      ${s.confirmation ? `<img class="shot" src="/job/${JOB}/file/confirmation.png?t=${Date.now()}">` : ""}
+      <div class="row" style="margin-top:10px"><button class="good" onclick="confirmed(true)">Yes, it went through</button><button onclick="confirmed(false)">No</button></div>`;
+  } else if (s.state === "submitted") {
+    v.innerHTML = `<div class="banner good">Submitted and logged.</div>
+      ${s.confirmation ? `<img class="shot" src="/job/${JOB}/file/confirmation.png?t=${Date.now()}">` : ""}
+      <p><a class="btn primary" href="/?tab=approved">Next application →</a> <a class="btn" href="/">Inbox</a></p>`;
+  } else if (s.state === "skipped" || s.state === "closed") {
+    v.innerHTML = `<div class="banner info">${s.state === "skipped" ? "Skipped." : "Closed. The job is still approved; you can apply later."}</div><a class="btn" href="/">Inbox</a> <button onclick="start()">Start again</button>`;
+  } else if (s.state === "error") {
+    v.innerHTML = `<div class="banner bad">${esc(s.message)}</div><button onclick="start()">Try again</button>`;
+  }
+}
+
+async function refresh() {
+  const s = await api(`/api/jobs/${JOB}/apply`);
+  if (s.state !== lastState || !["review", "questions"].includes(s.state)) render(s);
+  lastState = s.state;
+  return false;
+}
+async function start() { lastState = null; render(await api(`/api/jobs/${JOB}/apply/start`, {})); }
+async function act(a) { lastState = null; await api(`/api/jobs/${JOB}/apply/${a}`, {}); }
+async function confirmed(yes) { lastState = null; await api(`/api/jobs/${JOB}/apply/confirm`, { went_through: yes }); }
+async function submitApp() { lastState = null; document.getElementById("submitBtn").disabled = true; await act("submit"); }
+async function sendAnswers() {
+  const values = {}, remember = [];
+  window._need.forEach((a, k) => {
+    const val = readInput(a, "q" + k);
+    if (val && val.length) values[a.name] = val;
+    if (document.getElementById("r" + k).checked) remember.push(a.name);
+  });
+  lastState = null;
+  await api(`/api/jobs/${JOB}/apply/answers`, { values, remember });
+}
+function editRow(i) { editing = true; document.getElementById("edit" + i).style.display = ""; }
+async function saveRow(i) {
+  const a = window._answers.find(x => x.i === i);
+  await api(`/api/jobs/${JOB}/apply/field`, { name: a.name, value: readInput(a, "e" + i) });
+  editing = false; lastState = null;
+}
+poll(refresh, 1500);
+</script>
+{% endblock %}

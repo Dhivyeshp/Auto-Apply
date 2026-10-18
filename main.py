@@ -395,6 +395,22 @@ def cmd_cloud_check(args: argparse.Namespace, cfg: dict) -> None:
         raise SystemExit("alert errors (will retry next run): " + "; ".join(res.errors))
 
 
+def cmd_ui(args: argparse.Namespace, cfg: dict) -> None:
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from src.web.app import create_app
+
+    url = f"http://127.0.0.1:{args.port}"
+    console.print(f"AutoApply is running at [bold]{url}[/bold]  (Ctrl+C to stop)")
+    if not args.no_browser:
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    # 127.0.0.1 only: this site runs Claude and fills applications as you, so it must not be reachable from the network
+    uvicorn.run(create_app(cfg), host="127.0.0.1", port=args.port, log_level="warning")
+
+
 def cmd_notify_test(args: argparse.Namespace, cfg: dict) -> None:
     from src import notify
 
@@ -478,6 +494,11 @@ def main() -> None:
     p.add_argument("--every", type=int, default=30, help="minutes between checks")
     p.add_argument("--remove", action="store_true", help="remove the scheduled task")
     p.set_defaults(func=cmd_schedule)
+
+    p = sub.add_parser("ui", help="open the AutoApply website (local only)")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(func=cmd_ui)
 
     p = sub.add_parser("cloud-check", help="phone alerts for new jobs (run by GitHub Actions, no laptop needed)")
     p.set_defaults(func=cmd_cloud_check)

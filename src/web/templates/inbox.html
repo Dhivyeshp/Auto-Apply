@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% set nav = "inbox" %}
+{% block body %}
+<div class="tabs">
+  {% for key, (label, _) in tabs.items() %}
+    <a href="/?tab={{ key }}&ats={{ ats }}" class="{{ 'on' if key == tab else '' }}">{{ label }}<span class="n">{{ counts[key] }}</span></a>
+  {% endfor %}
+</div>
+
+<form class="row panel" method="get" action="/">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search company, role, location" class="grow">
+  <select name="ats" onchange="this.form.submit()">
+    <option value="applyable" {{ 'selected' if ats == 'applyable' }}>Bot can apply (Greenhouse / Lever / Ashby)</option>
+    <option value="all" {{ 'selected' if ats == 'all' }}>All sites</option>
+  </select>
+  <button>Search</button>
+</form>
+
+<div class="panel">
+  <div class="row" style="margin-bottom:10px">
+    <strong class="grow">{{ total }} job{{ '' if total == 1 else 's' }}{% if total > jobs|length %} <span class="muted">(showing {{ jobs|length }})</span>{% endif %}</strong>
+    {% if tab == "new" %}
+      <button class="primary" id="tailorBtn" disabled onclick="tailorSelected()">Tailor selected</button>
+    {% endif %}
+  </div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr>
+      {% if tab == "new" %}<th><input type="checkbox" onclick="document.querySelectorAll('.pick').forEach(c => { c.checked = this.checked }); updateBtn()"></th>{% endif %}
+      <th>Fit</th><th>Company</th><th>Role</th><th>Location</th><th>Site</th><th>Posted</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for j in jobs %}
+      <tr>
+        {% if tab == "new" %}<td><input type="checkbox" class="pick" value="{{ j.id }}" onchange="updateBtn()"></td>{% endif %}
+        <td>
+          {% if j.rating %}<span class="pill {{ 'good' if j.rating >= 7 else ('warn' if j.rating >= 5 else 'bad') }}">{{ j.rating }}/10</span>
+          {% elif j.id in active %}<span class="spin"></span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td><a href="/job/{{ j.id }}"><strong>{{ j.company }}</strong></a></td>
+        <td><a href="/job/{{ j.id }}">{{ j.role }}</a></td>
+        <td class="muted">{{ (j.locations or [])[0] }}{% if (j.locations or [])|length > 1 %} +{{ j.locations|length - 1 }}{% endif %}</td>
+        <td class="muted">{{ j.ats }}</td>
+        <td class="muted" style="white-space:nowrap">{{ j.date_posted or "" }}</td>
+        <td><a class="btn" href="/job/{{ j.id }}">Open</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="muted">Nothing here.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<script>
+function picked() { return [...document.querySelectorAll(".pick:checked")].map(c => +c.value); }
+function updateBtn() {
+  const b = document.getElementById("tailorBtn");
+  if (b) { const n = picked().length; b.disabled = !n; b.textContent = n ? `Tailor ${n} selected` : "Tailor selected"; }
+}
+async function tailorSelected() {
+  const ids = picked();
+  await api("/api/jobs/tailor", { ids });
+  document.getElementById("busy").textContent = `Tailoring ${ids.length}… they'll move to "Ready to review" when done`;
+  setTimeout(() => location.reload(), 4000);
+}
+{% if active %}setTimeout(() => location.reload(), 8000);{% endif %}
+</script>
+{% endblock %}
