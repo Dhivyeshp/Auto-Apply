@@ -145,6 +145,8 @@ def test_sponsorship_flags(cfg):
 
 
 def test_preferred(cfg):
+    assert not simplify.is_preferred(make(locations=["Austin, TX"]), cfg)  # default: no preference
+    cfg["locations"]["preferred"] = ["TX", "remote"]
     assert simplify.is_preferred(make(locations=["Austin, TX"]), cfg)
     assert simplify.is_preferred(make(locations=["Remote in USA"]), cfg)
     assert not simplify.is_preferred(make(locations=["Seattle, WA"]), cfg)

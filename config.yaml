@@ -36,7 +36,7 @@ title:
 
 locations:
   us_only: true          # non-US dropped unless a location is US or US-remote
-  preferred: [TX, Texas, Austin, Dallas, Houston, San Antonio, remote]
+  preferred: []              # locations to star and sort first, e.g. [TX, remote]; empty = all US equal
 
 sponsorship:
   exclude_no_sponsorship: false       # drop "Does Not Offer Sponsorship"

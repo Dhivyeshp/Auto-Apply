@@ -72,7 +72,7 @@ def test_alerts_only_new_matching_jobs(cfg, tmp_path):
                                                 listing(4, loc="Toronto, ON, Canada")])
     assert [l.listing_id for l in res.new] == ["id-2"]
     [(title, message, click)] = out.sent
-    assert title == "New: Co2" and "★ Co2 — Software Engineer Intern (Austin, TX)" in message
+    assert title == "New: Co2" and "Co2 — Software Engineer Intern (Austin, TX)" in message
     assert click == "https://jobs.lever.co/co2/2"
     # next run with the same feed: nothing new
     out2 = Outbox()
