@@ -198,6 +198,14 @@ def rank_bullets(bank: BulletBank, scores: list[BulletScore], max_bullets: int, 
     return relevant[:max_bullets]
 
 
+def resolve_pdf_name(template: str | None, types: dict[str, str] | None, category: str | None) -> str | None:
+    """'Dhivyesh_Resume_{type}' + job category → 'Dhivyesh_Resume_ML'. Unknown categories fall back to SWE."""
+    if not template:
+        return None
+    label = (types or {}).get(category or "", "SWE")
+    return template.replace("{type}", label)
+
+
 def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "x"
 
@@ -217,6 +225,7 @@ def tailor(
     job_id: int | None = None,
     with_rating: bool = True,
     pdf_name: str | None = None,
+    pdf_types: dict[str, str] | None = None,
 ) -> TailorResult:
     out_dir = out_root / f"{slug(company)}_{slug(role)}_{date.today().isoformat()}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -258,12 +267,14 @@ def tailor(
                 texts[rw.id] = new
 
     fit = render.fit_one_page(profile, bank, ranked, out_dir, texts=texts)
-    render.named_copy(fit.pdf, pdf_name)
+    named = resolve_pdf_name(pdf_name, pdf_types, analysis.role_category)
+    render.named_copy(fit.pdf, named)
     cov = ats_check.check_pdf(fit.pdf, analysis.keywords, analysis.must_have, coverage_threshold)
     rating = rate(runner, jd_text, fit.pdf) if with_rating else None
 
     (out_dir / "tailoring.json").write_text(json.dumps({
         "job_id": job_id,
+        "pdf_name": named,
         "company": company,
         "role": role,
         "analysis": analysis.model_dump(),

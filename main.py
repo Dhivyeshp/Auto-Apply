@@ -141,6 +141,7 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
             coverage_threshold=tcfg.get("coverage_threshold", 50),
             job_id=args.job_id,
             pdf_name=tcfg.get("pdf_name"),
+            pdf_types=tcfg.get("pdf_types"),
         )
     if job is not None:
         from src.watch import copy_to_sync_dir
@@ -214,6 +215,7 @@ def cmd_review(args: argparse.Namespace, cfg: dict) -> None:
         threshold=cfg.get("tailor", {}).get("coverage_threshold", 50),
         console=console,
         pdf_name=cfg.get("tailor", {}).get("pdf_name"),
+        pdf_types=cfg.get("tailor", {}).get("pdf_types"),
     )
 
 
@@ -319,7 +321,8 @@ def go(job_id: int, cfg: dict) -> None:
             job = tracker.get_job(conn, job_id)
         decision = review.review(Path(job["tailor_dir"]), profile, bank, conn,
                                  threshold=cfg.get("tailor", {}).get("coverage_threshold", 50), console=console,
-                                 pdf_name=cfg.get("tailor", {}).get("pdf_name"))
+                                 pdf_name=cfg.get("tailor", {}).get("pdf_name"),
+                                 pdf_types=cfg.get("tailor", {}).get("pdf_types"))
         if decision != "approve":
             return
         if input("Fill the application now? [Y/n] ").strip().lower() == "n":

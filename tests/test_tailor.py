@@ -137,3 +137,18 @@ def test_tailor_end_to_end_with_fake_claude(tmp_path):
     assert record["rating"]["score"] == 7 and record["rating"]["gaps"] == ["No Go experience"]
     assert (result.out_dir / "jd.txt").read_text(encoding="utf-8") == "We want Python interns."
     assert result.out_dir.name.startswith("acme-corp_swe-intern_")
+
+
+@pytest.mark.parametrize(
+    "category,expected",
+    [("swe", "Dhivyesh_Resume_SWE"), ("ml", "Dhivyesh_Resume_ML"), ("data", "Dhivyesh_Resume_ML"),
+     ("fde", "Dhivyesh_Resume_SWE"), ("something_new", "Dhivyesh_Resume_SWE"), (None, "Dhivyesh_Resume_SWE")],
+)
+def test_resolve_pdf_name(category, expected):
+    types = {"swe": "SWE", "fde": "SWE", "ml": "ML", "data": "ML"}
+    assert tailor.resolve_pdf_name("Dhivyesh_Resume_{type}", types, category) == expected
+
+
+def test_resolve_pdf_name_fixed_and_empty():
+    assert tailor.resolve_pdf_name("My_Resume", {"ml": "ML"}, "ml") == "My_Resume"
+    assert tailor.resolve_pdf_name(None, {}, "ml") is None

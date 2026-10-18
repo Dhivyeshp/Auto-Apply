@@ -19,7 +19,7 @@ from rich.text import Text
 
 from src import ats_check, render, tracker
 from src.schemas import BulletBank, Profile
-from src.tailor import check_rewrite, tech_vocab
+from src.tailor import check_rewrite, resolve_pdf_name, tech_vocab
 
 HELP = """[bold]a[/bold] approve   [bold]s[/bold] skip   [bold]o[/bold] open PDF   [bold]e[/bold] edit   [bold]q[/bold] quit (decide later)
 edit commands (one per line, blank line to re-render):
@@ -199,6 +199,7 @@ def review(
     ask: Callable[[str], str] = input,
     console: Console | None = None,
     pdf_name: str | None = None,
+    pdf_types: dict[str, str] | None = None,
 ) -> str:
     """Interactive loop. Returns 'approve', 'skip' or 'quit'."""
     console = console or Console()
@@ -210,7 +211,9 @@ def review(
         console.print(HELP)
         choice = ask("> ").strip().lower()
         if choice == "a":
-            decide(out_dir, record, "approve", conn, pdf_name)
+            # the name chosen at tailoring time, or (older runs) resolved from the recorded job type
+            name = record.get("pdf_name") or resolve_pdf_name(pdf_name, pdf_types, record["analysis"].get("role_category"))
+            decide(out_dir, record, "approve", conn, name)
             console.print(f"[green]approved[/green] {record['approved']['upload_path']}")
             return "approve"
         if choice == "s":

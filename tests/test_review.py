@@ -149,3 +149,15 @@ def test_approve_creates_named_copy_used_for_upload(tailored, bank):
     named.write_bytes(b"something else")
     upload, _ = approved_resume(tracker.get_job(conn, 1))
     assert upload.name == "resume.pdf"
+
+
+@needs_latex
+def test_named_copy_follows_job_type(tailored, bank):
+    out, profile, conn = tailored  # fixture's analysis says role_category "swe"
+    record = review.load_record(out)
+    record["analysis"]["role_category"] = "ml"
+    review.save_record(out, record)
+    review.review(out, profile, bank, conn, ask=scripted("a"), console=quiet(),
+                  pdf_name="Dhivyesh_Resume_{type}", pdf_types={"swe": "SWE", "ml": "ML"})
+    assert (out / "Dhivyesh_Resume_ML.pdf").exists()
+    assert review.load_record(out)["approved"]["upload_path"].endswith("Dhivyesh_Resume_ML.pdf")
