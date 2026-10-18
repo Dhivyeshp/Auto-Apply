@@ -259,3 +259,17 @@ def test_old_season_postings_are_filtered(cfg):
            "date_posted": _ts(2026, 4)}
     listing = simplify.normalize(simplify.adapt_season_listing(raw))
     assert listing.terms == ["Summer 2026"] and simplify.filter_reason(listing, cfg) == "term"
+
+
+@pytest.mark.parametrize(
+    "title,reason",
+    [
+        ("Member of Technical Staff Intern", None),
+        ("Frontend Engineer Intern - Member of Technical Staff", None),
+        ("Staff Engineer Intern Program", "title_exclude"),
+        ("Staff Software Engineer, Intern Mentor", "title_exclude"),
+        ("Senior Data Scientist Intern", "title_exclude"),
+    ],
+)
+def test_staff_titles(cfg, title, reason):
+    assert simplify.filter_reason(make(title=title), cfg) == reason

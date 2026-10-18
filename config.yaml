@@ -31,7 +31,8 @@ terms:
 
 title:
   include: [intern, internship, co-op, coop]
-  exclude: [phd, mba, senior, staff, principal]
+  # "staff engineer", not bare "staff": "Member of Technical Staff Intern" is a normal intern title
+  exclude: [phd, mba, senior, staff engineer, staff software, principal]
 
 locations:
   us_only: true          # non-US dropped unless a location is US or US-remote
