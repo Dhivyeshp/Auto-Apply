@@ -60,3 +60,4 @@ notify:
   discord_webhook: ""
   ready_push: true           # after pre-tailoring, push "Ready: Company — Role 8/10" with a tap-to-apply link
   attach_resume: false       # also attach the tailored PDF to that push (uploads it to ntfy.sh for ~3 hours)
+  sync_dir: ""               # copy each tailored PDF here, e.g. ~/OneDrive/AutoApply, to open it on your phone

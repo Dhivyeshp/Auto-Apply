@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -40,8 +42,23 @@ def tailor_job(conn: sqlite3.Connection, job: dict, cfg: dict, runner, profile: 
         coverage_threshold=tcfg.get("coverage_threshold", 50),
         job_id=job["id"],
     )
-    tracker.set_tailored(conn, job["id"], str(result.out_dir), result.rating.score if result.rating else None)
+    rating = result.rating.score if result.rating else None
+    tracker.set_tailored(conn, job["id"], str(result.out_dir), rating)
+    copy_to_sync_dir((cfg.get("notify") or {}).get("sync_dir"), job, result.pdf, rating)
     return result
+
+
+def copy_to_sync_dir(sync_dir: str | None, job: dict, pdf: Path, rating: int | None) -> Path | None:
+    """Copy a tailored PDF into a cloud-synced folder (OneDrive/Drive/Dropbox) under a readable name."""
+    if not sync_dir or not pdf.exists():
+        return None
+    folder = Path(os.path.expandvars(os.path.expanduser(sync_dir)))
+    folder.mkdir(parents=True, exist_ok=True)
+    score = f" ({rating} of 10)" if rating else ""
+    name = re.sub(r'[<>:"/\\|?*]+', "-", f"{job['company']} - {job['role']}")[:100].strip(" .-")
+    dest = folder / f"{name}{score} #{job['id']}.pdf"
+    shutil.copyfile(pdf, dest)
+    return dest
 
 
 def _pick_for_tailoring(conn: sqlite3.Connection, jobs: list[dict], wcfg: dict) -> list[dict]:

@@ -209,3 +209,13 @@ def test_local_config_overrides(tmp_path):
     (tmp_path / "config.local.yaml").write_text("notify:\n  ntfy_topic: secret-topic\n")
     cfg = main.load_config(tmp_path / "config.yaml")
     assert cfg["notify"] == {"toast": True, "ntfy_topic": "secret-topic"} and cfg["watch"]["auto_tailor"]
+
+
+def test_copy_to_sync_dir(tmp_path):
+    pdf = tmp_path / "resume.pdf"
+    pdf.write_bytes(b"%PDF")
+    job = {"id": 42, "company": "AT&T", "role": "SWE Intern / Backend: Platform", "url": "x"}
+    dest = watch.copy_to_sync_dir(str(tmp_path / "sync"), job, pdf, 8)
+    assert dest.name == "AT&T - SWE Intern - Backend- Platform (8 of 10) #42.pdf"
+    assert dest.read_bytes() == b"%PDF"
+    assert watch.copy_to_sync_dir("", job, pdf, 8) is None

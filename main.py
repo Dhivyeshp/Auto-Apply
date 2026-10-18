@@ -142,8 +142,11 @@ def cmd_tailor(args: argparse.Namespace, cfg: dict) -> None:
             job_id=args.job_id,
         )
     if job is not None:
-        tracker.set_tailored(tracker.connect(ROOT / cfg["db_path"]), job["id"], str(result.out_dir),
-                             result.rating.score if result.rating else None)
+        from src.watch import copy_to_sync_dir
+
+        rating = result.rating.score if result.rating else None
+        tracker.set_tailored(tracker.connect(ROOT / cfg["db_path"]), job["id"], str(result.out_dir), rating)
+        copy_to_sync_dir((cfg.get("notify") or {}).get("sync_dir"), job, result.pdf, rating)
     a = result.analysis
     console.print(f"[bold]{company} — {role}[/bold]  ({a.role_category})  {a.summary}")
     console.print(f"[dim]keywords:[/dim] {', '.join(a.keywords)}")
